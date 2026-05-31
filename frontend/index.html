@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema Escáner Portuario — Colombia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg:#05080f; --panel:#0b1120; --border:#1a2d4a;
+  --accent:#00e5ff; --accent2:#ff6b35; --accent3:#39ff14; --accent4:#ffd700;
+  --text:#c8d8e8; --dim:#4a6580; --grid:#0d1e33;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,.012) 2px,rgba(0,229,255,.012) 4px);}
+
+/* HEADER */
+header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-bottom:1px solid var(--border);
+  padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:200;}
+.logo{display:flex;align-items:center;gap:.8rem;}
+.logo svg{width:34px;height:34px;}
+.logo h1{font-family:'Bebas Neue',sans-serif;font-size:1.35rem;letter-spacing:.1em;color:var(--accent);
+  text-shadow:0 0 18px rgba(0,229,255,.4);line-height:1;}
+.logo h1 span{display:block;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:var(--dim);letter-spacing:.2em;margin-top:2px;}
+.hdr-right{display:flex;align-items:center;gap:1.2rem;}
+.live{display:flex;align-items:center;gap:.35rem;font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--accent3);letter-spacing:.1em;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--accent3);animation:pulse 1.5s infinite;box-shadow:0 0 7px var(--accent3);}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
+#clock{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--dim);}
+
+/* BREADCRUMB */
+.breadcrumb{padding:.55rem 2rem;background:rgba(0,229,255,.025);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:.5rem;font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--dim);letter-spacing:.1em;}
+.bc-item{cursor:pointer;transition:color .2s;padding:.15rem .3rem;border-radius:3px;}
+.bc-item:hover{color:var(--accent);}
+.bc-item.active{color:var(--accent);}
+.bc-sep{opacity:.3;}
+
+/* VIEWS */
+.view{display:none;} .view.active{display:block;}
+
+/* ===== VIEW 1: MAPA ===== */
+.map-layout{display:grid;grid-template-columns:1fr 320px;height:calc(100vh - 110px);}
+.map-wrap{position:relative;background:#020610;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+
+#map-svg-container{width:100%;height:100%;position:relative;display:flex;align-items:center;justify-content:center;}
+#colombiaSVG{position:absolute;transition:all .3s;}
+
+/* Port pins on map */
+.map-pin{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:10;}
+.pin-pulse{
+  width:14px;height:14px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 10px var(--accent),0 0 20px rgba(0,229,255,.3);
+  position:relative;z-index:2;transition:all .2s;cursor:pointer;
+}
+.map-pin:hover .pin-pulse{
+  width:20px;height:20px;
+}
+.map-pin.selected .pin-pulse{
+  width:18px;height:18px;
+  box-shadow:0 0 16px #ffd700,0 0 30px rgba(255,215,0,.5);
+  outline:2px solid rgba(255,255,255,.4);
+}
+.pin-ripple{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  border-radius:50%;border:1px solid rgba(0,229,255,.5);
+  animation:ripple 2.5s ease-out infinite;pointer-events:none;
+}
+@keyframes ripple{
+  0%{width:12px;height:12px;opacity:.7}
+  100%{width:44px;height:44px;opacity:0}
+}
+.pin-tooltip{
+  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:rgba(5,8,15,.95);border:1px solid var(--accent);
+  padding:.3rem .7rem;border-radius:4px;white-space:nowrap;
+  font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:var(--accent);
+  opacity:0;transition:opacity .2s;pointer-events:none;letter-spacing:.08em;
+  box-shadow:0 4px 20px rgba(0,229,255,.2);
+}
+.map-pin:hover .pin-tooltip{opacity:1;}
+
+/* Sidebar */
+.map-sidebar{background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sidebar-head{padding:1.2rem 1.4rem;border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg,rgba(0,229,255,.06) 0%,transparent 100%);}
+.sidebar-title{font-family:'Bebas Neue',sans-serif;font-size:1.05rem;letter-spacing:.1em;color:var(--accent);margin-bottom:.2rem;}
+.sidebar-sub{font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:var(--dim);letter-spacing:.12em;}
+.ports-list{flex:1;overflow-y:auto;padding:.7rem;display:flex;flex-direction:column;gap:.45rem;}
+
+.pcard{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.85rem 1rem;
+  cursor:pointer;transition:all .2s;position:relative;}
+.pcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dim);transition:background .2s;border-radius:6px 0 0 6px;}
+.pcard:hover,.pcard.active{border-color:rgba(0,229,255,.3);background:rgba(0,229,255,.03);}
+.pcard:hover::before,.pcard.active::before{background:var(--accent);}
+.pcard-name{font-family:'IBM Plex Sans',sans-serif;font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:.1rem;line-height:1.2;}
+.pcard-loc{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:var(--dim);letter-spacing:.08em;margin-top:.2rem;}
+.pcard-stats{display:flex;gap:.8rem;margin-top:.5rem;}
+.pstat-val{font-family:'Bebas Neue',sans-serif;font-size:.95rem;color:var(--accent);display:block;letter-spacing:.04em;}
+.pstat-lbl{font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:var(--dim);letter-spacing:.08em;}
+
+/* Disponibilidad */
+.pcard-disp{margin-top:.55rem;padding-top:.45rem;border-top:1px solid var(--border);}
+.disp-lbl{font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:var(--dim);letter-spacing:.1em;margin-bottom:.3rem;display:block;}
+.disp-row{display:flex;align-items:center;gap:.5rem;}
+.disp-bar-track{flex:1;height:4px;background:var(--grid);border-radius:2px;overflow:hidden;}
+.disp-bar-fill{height:100%;border-radius:2px;transition:width .4s ease,background .3s;}
+.disp-value-box{
+  display:flex;align-items:center;gap:2px;
+  background:var(--grid);border:1px solid var(--border);border-radius:4px;
+  padding:.18rem .35rem;min-width:58px;flex-shrink:0;
+}
+.disp-value-box:focus-within{border-color:var(--accent);}
+.disp-input{
+  width:34px;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.04em;
+  background:transparent;border:none;color:var(--text);text-align:right;
+  outline:none;padding:0;
+}
+.disp-pct{font-family:'Bebas Neue',sans-serif;font-size:1rem;color:var(--dim);}
+.disp-hint{font-family:'IBM Plex Mono',monospace;font-size:.44rem;color:var(--dim);margin-top:.2rem;opacity:.5;letter-spacing:.06em;}
+
+/* ===== VIEW 2: MESES ===== */
+.months-view{padding:2rem;max-width:960px;margin:0 auto;}
+.port-hero{display:flex;align-items:flex-start;gap:1.5rem;margin-bottom:2rem;padding:1.5rem;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;position:relative;overflow:hidden;}
+.port-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),transparent);}
+.hero-icon{width:52px;height:52px;border-radius:50%;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.25);
+  display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;}
+.hero-name{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:.06em;color:var(--accent);line-height:1;}
+.hero-dept{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:var(--dim);letter-spacing:.12em;margin-top:.25rem;}
+.hero-coords{font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:var(--dim);margin-top:.15rem;opacity:.7;}
+
+.months-label{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:var(--dim);letter-spacing:.2em;text-transform:uppercase;margin-bottom:.9rem;}
+.months-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;}
+.mcard{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;
+  cursor:pointer;transition:all .22s;position:relative;overflow:hidden;text-align:center;}
+.mcard:hover{border-color:rgba(0,229,255,.35);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.mcard.has-data{border-color:rgba(0,229,255,.2);}
+.mcard.no-data{opacity:.35;cursor:default;}
+.mcard.no-data:hover{transform:none;box-shadow:none;}
+.mcard-name{font-family:'Bebas Neue',sans-serif;font-size:1.25rem;letter-spacing:.08em;color:var(--text);}
+.mcard-year{font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:var(--dim);letter-spacing:.1em;}
+.mcard-badge{display:inline-block;margin-top:.5rem;padding:.18rem .5rem;border-radius:3px;
+  font-family:'IBM Plex Mono',monospace;font-size:.52rem;letter-spacing:.07em;}
+.mcard-badge.loaded{background:rgba(57,255,20,.08);color:var(--accent3);border:1px solid rgba(57,255,20,.2);}
+.mcard-badge.empty{background:rgba(74,101,128,.08);color:var(--dim);border:1px solid rgba(74,101,128,.2);}
+.mcard-upload{margin-top:.5rem;}
+.mcard-upload input[type=file]{display:none;}
+.mcard-upload label{display:inline-block;padding:.22rem .55rem;border:1px dashed var(--border);
+  border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:var(--dim);
+  cursor:pointer;transition:all .2s;letter-spacing:.07em;}
+.mcard-upload label:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ===== VIEW 3: DASHBOARD ===== */
+.dash-bar{padding:.75rem 2rem;background:rgba(0,229,255,.025);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;}
+.dash-ctx{font-family:'IBM Plex Mono',monospace;font-size:.6rem;}
+.ctx-port{color:var(--accent4);font-size:.9rem;font-family:'Bebas Neue',sans-serif;letter-spacing:.06em;}
+.ctx-month{color:var(--dim);margin-left:.4rem;}
+.btn-file{padding:.38rem .9rem;background:transparent;border:1px solid var(--border);border-radius:4px;
+  font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:var(--dim);cursor:pointer;
+  transition:all .2s;letter-spacing:.08em;position:relative;overflow:hidden;}
+.btn-file input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;}
+.btn-file:hover{border-color:var(--accent);color:var(--accent);}
+
+main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:1.5rem;}
+.kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1.2rem 1.4rem;position:relative;overflow:hidden;}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.kpi-card:nth-child(1)::before{background:var(--accent)}
+.kpi-card:nth-child(2)::before{background:var(--accent2)}
+.kpi-card:nth-child(3)::before{background:var(--accent3)}
+.kpi-card:nth-child(4)::before{background:var(--accent4)}
+.kpi-card:nth-child(5)::before{background:#b44fff}
+.kpi-label{font-family:'IBM Plex Mono',monospace;font-size:.56rem;color:var(--dim);letter-spacing:.15em;text-transform:uppercase;margin-bottom:.4rem;}
+.kpi-value{font-family:'Bebas Neue',sans-serif;font-size:2.3rem;line-height:1;letter-spacing:.04em;}
+.kpi-card:nth-child(1) .kpi-value{color:var(--accent);text-shadow:0 0 20px rgba(0,229,255,.3)}
+.kpi-card:nth-child(2) .kpi-value{color:var(--accent2);text-shadow:0 0 20px rgba(255,107,53,.3)}
+.kpi-card:nth-child(3) .kpi-value{color:var(--accent3);text-shadow:0 0 20px rgba(57,255,20,.3)}
+.kpi-card:nth-child(4) .kpi-value{color:var(--accent4);text-shadow:0 0 20px rgba(255,215,0,.3)}
+.kpi-sub{font-size:.64rem;color:var(--dim);margin-top:.25rem;}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1.2rem 1.4rem;position:relative;overflow:hidden;}
+.panel::after{content:'';position:absolute;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.07),transparent);
+  top:-2px;animation:scanline 7s linear infinite;pointer-events:none;}
+@keyframes scanline{0%{top:-2px}100%{top:100%}}
+.panel-title{font-family:'IBM Plex Mono',monospace;font-size:.56rem;color:var(--dim);
+  letter-spacing:.2em;text-transform:uppercase;margin-bottom:1rem;display:flex;align-items:center;gap:.4rem;}
+.panel-title::before{content:'';width:3px;height:9px;background:var(--accent);border-radius:2px;}
+.hm-grid{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:.4rem;}
+.hm-cell{aspect-ratio:1;border-radius:3px;cursor:default;transition:transform .15s;}
+.hm-cell:hover{transform:scale(1.35);z-index:10;}
+.hm-labels{display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-top:4px;}
+.hm-lbl{font-family:'IBM Plex Mono',monospace;font-size:.4rem;color:var(--dim);text-align:center;}
+.pt{width:100%;border-collapse:collapse;font-size:.75rem;}
+.pt th{font-family:'IBM Plex Mono',monospace;font-size:.54rem;color:var(--dim);letter-spacing:.12em;text-transform:uppercase;
+  padding:.5rem .8rem;text-align:left;border-bottom:1px solid var(--border);}
+.pt td{padding:.5rem .8rem;border-bottom:1px solid rgba(26,45,74,.4);color:var(--text);
+  font-family:'IBM Plex Mono',monospace;font-size:.64rem;}
+.pt tr:hover td{background:rgba(0,229,255,.025);}
+.pt .num{color:var(--accent);font-weight:600;}
+.sdot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent3);margin-right:5px;box-shadow:0 0 5px var(--accent3);}
+
+.btn-back{display:inline-flex;align-items:center;gap:.4rem;margin-bottom:1.4rem;
+  padding:.4rem .9rem;background:transparent;border:1px solid var(--border);border-radius:5px;
+  font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--dim);cursor:pointer;
+  transition:all .2s;letter-spacing:.1em;}
+.btn-back:hover{border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,.05);}
+.btn-back svg{width:12px;height:12px;transition:transform .2s;}
+.btn-back:hover svg{transform:translateX(-2px);}
+
+
+  display:flex;align-items:center;justify-content:space-between;
+  font-family:'IBM Plex Mono',monospace;font-size:.53rem;color:var(--dim);letter-spacing:.1em;}
+
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+@media(max-width:900px){
+  .map-layout{grid-template-columns:1fr;height:auto;}
+  .map-wrap{height:70vw;}
+  .kpi-row{grid-template-columns:repeat(2,1fr);}
+  .months-grid{grid-template-columns:repeat(2,1fr);}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 34 34" fill="none">
+      <circle cx="17" cy="17" r="15" stroke="#00e5ff" stroke-width="1" opacity=".3"/>
+      <circle cx="17" cy="17" r="9"  stroke="#00e5ff" stroke-width="1" opacity=".5"/>
+      <circle cx="17" cy="17" r="3.5" stroke="#00e5ff" stroke-width="1"/>
+      <line x1="17" y1="2" x2="17" y2="32" stroke="#00e5ff" stroke-width=".5" opacity=".3"/>
+      <line x1="2"  y1="17" x2="32" y2="17" stroke="#00e5ff" stroke-width=".5" opacity=".3"/>
+      <path d="M17 17 L30 8" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" opacity=".9">
+        <animateTransform attributeName="transform" type="rotate" from="0 17 17" to="360 17 17" dur="4s" repeatCount="indefinite"/>
+      </path>
+      <circle cx="17" cy="17" r="2" fill="#00e5ff"/>
+    </svg>
+    <h1>SISTEMA ESCÁNER PORTUARIO <span style="color:var(--accent4);text-shadow:0 0 18px rgba(255,215,0,.5)">PROTACTICS</span>
+      <span>TABLERO DE CONTROL OPERACIONAL — COLOMBIA</span>
+    </h1>
+  </div>
+  <div class="hdr-right">
+    <div class="live"><div class="live-dot"></div>SISTEMA ACTIVO</div>
+    <div id="clock">--:--:--</div>
+  </div>
+</header>
+
+<div class="breadcrumb">
+  <span class="bc-item active" id="bc1" onclick="goTo('map')">🗺 INICIO</span>
+  <span class="bc-sep" id="bc2s" style="display:none">›</span>
+  <span class="bc-item"      id="bc2" style="display:none" onclick="goTo('months')"></span>
+  <span class="bc-sep" id="bc3s" style="display:none">›</span>
+  <span class="bc-item"      id="bc3" style="display:none"></span>
+</div>
+
+<!-- VIEW 1: MAPA -->
+<div class="view active" id="view-map">
+  <div class="map-layout">
+    <div class="map-wrap" id="mapWrap">
+      <div id="map-svg-container">
+        <!-- SVG Colombia + pins injected by JS -->
+      </div>
+    </div>
+    <div class="map-sidebar">
+      <div class="sidebar-head">
+        <div class="sidebar-title">PUERTOS ESCÁNER</div>
+        <div class="sidebar-sub">Haz clic en un puerto para ver reportes</div>
+      </div>
+      <div class="ports-list" id="portsList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW 2: MESES -->
+<div class="view" id="view-months">
+  <div class="months-view">
+    <button class="btn-back" onclick="goTo('map')">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 2L4 6l4 4"/></svg>
+      VOLVER AL MAPA
+    </button>
+    <div class="port-hero">
+      <div class="hero-icon" id="heroIcon">⚓</div>
+      <div>
+        <div class="hero-name" id="heroName">—</div>
+        <div class="hero-dept" id="heroDept">—</div>
+        <div class="hero-coords" id="heroCoords">—</div>
+      </div>
+    </div>
+    <div class="months-label">▸ Seleccione un mes para abrir el dashboard</div>
+    <div class="months-grid" id="monthsGrid"></div>
+  </div>
+</div>
+
+<!-- VIEW 3: DASHBOARD -->
+<div class="view" id="view-dashboard">
+  <div class="dash-bar">
+    <div style="display:flex;align-items:center;gap:1rem">
+      <button class="btn-back" style="margin:0" onclick="openMonths(selPort.id)">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 2L4 6l4 4"/></svg>
+        VOLVER A MESES
+      </button>
+      <div class="dash-ctx">
+        <span class="ctx-port" id="ctxPort">—</span>
+        <span class="ctx-month" id="ctxMonth">—</span>
+      </div>
+    </div>
+    <div class="btn-file">
+      <input type="file" accept=".xls,.xlsx" onchange="loadDashFile(this)">
+      ⬆ CARGAR / REEMPLAZAR XLS
+    </div>
+  </div>
+  <main>
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Escaneos</div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-sub">Con imagen de camión</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Días Activos</div>
+        <div class="kpi-value" id="kpi-days">—</div>
+        <div class="kpi-sub">Días con operación</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Promedio Diario</div>
+        <div class="kpi-value" id="kpi-avg">—</div>
+        <div class="kpi-sub">Escaneos / día activo</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Pico Diario</div>
+        <div class="kpi-value" id="kpi-peak">—</div>
+        <div class="kpi-sub" id="kpi-peak-lbl">Mayor volumen del mes</div>
+      </div>
+      <div class="kpi-card" id="kpi-avail-card">
+        <div class="kpi-label">Disponibilidad de Servicio</div>
+        <div class="kpi-value" id="kpi-avail" style="color:var(--dim)">—</div>
+        <div class="kpi-sub" id="kpi-avail-sub">Sin dato registrado</div>
+        <div class="disp-bar-track" style="margin-top:.5rem">
+          <div class="disp-bar-fill" id="kpi-avail-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:1rem">
+      <div class="panel-title">Escaneos por Día</div>
+      <canvas id="dailyChart" height="95"></canvas>
+    </div>
+
+    <div class="panel" style="margin-bottom:1rem">
+      <div class="panel-title">Actividad por Hora del Día</div>
+      <div class="hm-grid" id="hmGrid"></div>
+      <div class="hm-labels" id="hmLabels"></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:1rem">
+      <div class="panel-title">Resumen del Período</div>
+      <table class="pt">
+        <thead><tr>
+          <th>Puerto</th><th>Mes</th><th>Total Escaneos</th>
+          <th>Días Activos</th><th>Pico Diario</th><th>Operadores</th><th>Estado</th>
+        </tr></thead>
+        <tbody id="dashTbody">
+          <tr><td colspan="7" style="color:var(--dim);text-align:center;padding:2rem">
+            Cargue un archivo XLS para ver datos
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+  <div class="footer-strip">
+    <span>SISTEMA DE MONITOREO PORTUARIO — COLOMBIA</span>
+    <span id="footerInfo">—</span>
+    <span>Procesado por Claude · Anthropic</span>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  API CONFIG — cambiar USE_API a true cuando el backend esté listo
+// ============================================================
+const API_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:8000'
+  : window.location.origin;
+
+const USE_API = false; // ← Cambiar a true cuando el backend esté desplegado
+
+async function apiGet(path) {
+  const r = await fetch(API_URL + path);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function apiPut(path, body) {
+  const r = await fetch(API_URL + path, {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function apiUpload(path, file) {
+  const fd = new FormData(); fd.append('file', file);
+  const r = await fetch(API_URL + path, {method:'POST', body:fd});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadPortsFromAPI() {
+  if (!USE_API) return;
+  try {
+    const puertos = await apiGet('/puertos');
+    puertos.forEach(p => {
+      if (p.ultima_disponibilidad) {
+        const d = p.ultima_disponibilidad;
+        portAvail[p.id][d.year][d.mes - 1] = d.valor;
+      }
+    });
+    buildPortList();
+  } catch(e) { console.warn('API offline, modo local:', e.message); }
+}
+
+async function loadMesesFromAPI(portId) {
+  if (!USE_API) return;
+  try {
+    const meses = await apiGet(`/meses/${portId}`);
+    meses.forEach(m => {
+      if (m.total_escaneos > 0 && !portStore[portId][m.year]?.[m.mes-1])
+        portStore[portId][m.year][m.mes-1] = {placeholder:true, totalScans:m.total_escaneos};
+      if (m.disponibilidad != null)
+        portAvail[portId][m.year][m.mes-1] = m.disponibilidad;
+    });
+  } catch(e) { console.warn('Error meses API:', e.message); }
+}
+
+async function loadDashFromAPI(portId, year, mes) {
+  if (!USE_API) return null;
+  try {
+    const d = await apiGet(`/data/${portId}/${year}/${mes}`);
+    const parsed = {
+      portName:d.puerto_nombre, monthName:d.mes_nombre,
+      totalScans:d.total_scans, daysActive:d.days_active,
+      peakDay:d.peak_day, avgDaily:d.avg_daily,
+      daily:d.daily, hourly:d.hourly,
+      operators:d.operators, operatorCount:d.operator_count, format:d.formato
+    };
+    portStore[portId][year][mes-1] = parsed;
+    if (d.disponibilidad != null) portAvail[portId][year][mes-1] = d.disponibilidad;
+    return parsed;
+  } catch(e) { return null; }
+}
+
+async function saveAvailToAPI(portId, year, mes) {
+  if (!USE_API) return;
+  try { await apiPut(`/disponibilidad/${portId}/${year}/${mes+1}`,
+    {valor: portAvail[portId]?.[year]?.[mes] ?? null}); }
+  catch(e) { console.warn('Error guardando disp:', e.message); }
+}
+
+async function uploadToAPI(file, portId, year, monthIdx) {
+  if (!USE_API) return null;
+  try { return await apiUpload(`/upload/${portId}/${year}/${monthIdx+1}`, file); }
+  catch(e) { console.warn('Error upload:', e.message); return null; }
+}
+
+// ============================================================
+//  PORTS — 7 scanners (Puerto Antioquia has 2)
+// ============================================================
+const PORTS = [
+  { id:0, name:'Soc. Portuaria Regional de Buenaventura', short:'SPR Buenaventura',
+    dept:'Valle del Cauca', lat:3.880, lng:-77.031, icon:'⚓',
+    sx:91.4, sy:309.0 },          // spread upward
+  { id:1, name:'Puerto Industrial de Aguadulce', short:'Aguadulce',
+    dept:'Valle del Cauca', lat:3.848, lng:-77.118, icon:'🏭',
+    sx:83.0, sy:318.0 },          // spread left-down
+  { id:2, name:'Terminal de Contenedores de Buenaventura (TCBUEN)', short:'TCBUEN',
+    dept:'Valle del Cauca', lat:3.856, lng:-77.075, icon:'📦',
+    sx:88.0, sy:323.0 },          // spread down
+  { id:3, name:'Puerto Antioquia — Escáner 1', short:'Pto. Antioquia E1',
+    dept:'Antioquia', lat:7.823, lng:-76.628, icon:'⚓',
+    sx:104.0, sy:177.5 },
+  { id:4, name:'Puerto Antioquia — Escáner 2', short:'Pto. Antioquia E2',
+    dept:'Antioquia', lat:7.823, lng:-76.628, icon:'🔍',
+    sx:116.0, sy:172.0 },         // offset sideways
+  { id:5, name:'Soc. Portuaria de Barranquilla', short:'SPR Barranquilla',
+    dept:'Atlántico', lat:10.968, lng:-74.781, icon:'🚢',
+    sx:174.8, sy:69.7 },
+  { id:6, name:'Puerto de Santa Marta', short:'Pto. Santa Marta',
+    dept:'Magdalena', lat:11.241, lng:-74.199, icon:'⛴',
+    sx:196.3, sy:60.3 },
+];
+
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const YEARS  = [2025, 2026];
+const COLORS = ['#00e5ff','#ff6b35','#39ff14','#ffd700','#b44fff','#ff2d78','#00bfff'];
+
+// portStore[portId][year][monthIdx] = parsed | null
+const portStore = {};
+PORTS.forEach(p => { portStore[p.id] = {}; YEARS.forEach(y => portStore[p.id][y] = Array(12).fill(null)); });
+
+let selPort = null, selYear = 2026, selMonth = null;
+let chartDaily = null;
+
+// Disponibilidad manual: portAvail[portId][year][monthIdx] = número 0-100
+const portAvail = {};
+PORTS.forEach(p => { portAvail[p.id] = {}; YEARS.forEach(y => portAvail[p.id][y] = Array(12).fill(null)); });
+
+function getDispColor(val) {
+  if (val === null || val === '') return '#4a6580';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '#4a6580';
+  if (n >= 95) return '#39ff14';   // 95-100% → verde
+  if (n >= 90) return '#ffd700';   // 90-94%  → amarillo
+  return '#ff4444';                // < 90%   → rojo
+}
+
+function saveAvail(portId, year, mi, val) {
+  const n = parseFloat(val);
+  portAvail[portId][year][mi] = (!isNaN(n) && n >= 0 && n <= 100) ? n : null;
+  const v   = portAvail[portId][year][mi];
+  const col = getDispColor(v);
+
+  // Update month card bar + input color
+  const fill  = document.getElementById(`disp-fill-${portId}-${year}-${mi}`);
+  const input = document.getElementById(`disp-inp-${portId}-${year}-${mi}`);
+  const pct   = input?.parentElement?.querySelector('.disp-pct');
+  if (fill)  { fill.style.width = (v ?? 0) + '%'; fill.style.background = col; }
+  if (input) { input.style.color = v !== null ? col : 'var(--dim)'; }
+  if (pct)   { pct.style.color   = v !== null ? col : 'var(--dim)'; }
+
+  // If dashboard is open for this same port/year/month, refresh its KPI too
+  if (document.getElementById('view-dashboard').classList.contains('active') &&
+      selPort?.id === portId && selYear === year && selMonth === mi) {
+    const data = portStore[portId][year][mi];
+    if (data) renderDashboard(data);
+  }
+  // Persist to API
+  saveAvailToAPI(portId, year, mi);
+  // Update sidebar
+  updateSidebarAvail(portId);
+}
+
+function updateSidebarAvail(portId) {
+  const latest = getLatestAvail(portId);
+  const col    = getDispColor(latest?.v ?? null);
+  const pct    = latest ? latest.v : 0;
+
+  const sbar  = document.getElementById(`sidebar-fill-${portId}`);
+  const slbl  = document.getElementById(`sidebar-lbl-${portId}`);
+  const sval  = document.getElementById(`sidebar-val-${portId}`);
+  const spct  = document.getElementById(`sidebar-pct-${portId}`);
+  const sbox  = document.getElementById(`sidebar-box-${portId}`);
+
+  if (sbar) { sbar.style.width = pct + '%'; sbar.style.background = col; }
+  if (slbl) slbl.textContent = 'DISPONIBILIDAD MENSUAL' + (latest ? ' · ' + latest.label.toUpperCase() : '');
+  if (sval) { sval.textContent = latest ? latest.v.toFixed(1) : ''; sval.style.color = col; }
+  if (spct) { spct.style.color = col; spct.style.display = latest ? '' : 'none'; }
+  if (sbox) sbox.style.opacity = latest ? '1' : '0.4';
+}
+
+// ============================================================
+//  CLOCK
+// ============================================================
+setInterval(() => document.getElementById('clock').textContent =
+  new Date().toLocaleTimeString('es-CO',{hour12:false}), 1000);
+document.getElementById('clock').textContent = new Date().toLocaleTimeString('es-CO',{hour12:false});
+
+// ============================================================
+//  NAVIGATION
+// ============================================================
+function goTo(view, portId, year, monthIdx) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-'+view).classList.add('active');
+  setBreadcrumb(view, portId, year, monthIdx);
+}
+
+function setBreadcrumb(view, portId, year, monthIdx) {
+  const bc1=document.getElementById('bc1'),bc2=document.getElementById('bc2'),bc3=document.getElementById('bc3');
+  const bc2s=document.getElementById('bc2s'),bc3s=document.getElementById('bc3s');
+  [bc1,bc2,bc3].forEach(b=>b.classList.remove('active'));
+  if(view==='map'){
+    bc1.classList.add('active');
+    bc2s.style.display='none'; bc2.style.display='none';
+    bc3s.style.display='none'; bc3.style.display='none';
+  } else if(view==='months'){
+    const p=PORTS[portId??selPort?.id??0];
+    bc2s.style.display=''; bc2.style.display=''; bc3s.style.display='none'; bc3.style.display='none';
+    bc2.textContent='⚓ '+p.short.toUpperCase(); bc2.classList.add('active');
+    bc2.onclick = null; // no sub-nav from here
+  } else {
+    const p=PORTS[portId??selPort?.id??0];
+    const m=MONTHS[monthIdx??selMonth??0];
+    bc2s.style.display=''; bc2.style.display='';
+    bc3s.style.display=''; bc3.style.display='';
+    bc2.textContent='⚓ '+p.short.toUpperCase();
+    bc2.onclick = ()=>openMonths(selPort.id);
+    bc3.textContent=m.toUpperCase()+' '+(year??selYear);
+    bc3.classList.add('active');
+  }
+}
+
+// ============================================================
+//  MAP BUILD
+// ============================================================
+// Real Colombia outline from GeoJSON (johan/world.geo.json, CC0)
+const COLOMBIA_PATH = "M152.8,450.9 L137.0,442.8 L118.8,431.4 L108.3,436.9 L76.9,432.1 L67.8,417.4 L60.9,417.9 L23.9,398.4 L18.9,387.7 L32.7,385.2 L31.0,368.0 L39.7,355.6 L58.1,353.3 L73.7,331.7 L87.9,313.7 L74.2,305.6 L81.2,285.7 L72.8,254.3 L80.8,245.3 L74.9,216.3 L59.9,198.0 L64.7,181.4 L76.6,183.8 L83.6,173.6 L75.0,153.5 L79.5,148.4 L98.6,149.5 L126.4,125.6 L141.7,121.9 L142.0,110.6 L148.9,81.6 L170.1,65.7 L193.5,65.1 L196.4,57.9 L225.4,60.8 L254.5,43.5 L269.0,35.8 L286.9,19.3 L300.0,21.4 L309.7,30.4 L302.5,42.0 L278.7,47.7 L269.3,64.8 L255.0,74.7 L244.2,87.4 L239.7,111.9 L229.4,131.9 L248.6,134.2 L253.3,150.0 L261.5,157.5 L264.4,171.3 L260.0,184.0 L261.3,191.2 L270.4,194.0 L279.3,206.0 L326.9,202.7 L348.4,207.1 L374.5,236.6 L389.4,232.9 L416.1,234.7 L437.2,230.8 L450.3,236.7 L443.6,255.2 L435.4,266.7 L432.5,291.3 L439.9,314.1 L450.5,324.3 L451.7,331.9 L433.0,349.0 L446.4,356.6 L456.2,368.5 L467.5,402.7 L460.6,407.0 L453.3,386.7 L443.0,375.9 L430.8,387.7 L358.6,386.9 L359.1,408.4 L380.8,411.9 L379.5,425.1 L372.1,421.5 L351.3,427.2 L351.1,452.1 L367.5,464.6 L373.3,484.2 L372.4,499.1 L355.8,593.1 L337.3,574.9 L326.2,574.0 L350.1,539.1 L321.7,523.1 L299.5,526.0 L286.1,520.1 L265.7,529.2 L238.1,524.9 L216.3,488.9 L199.2,480.1 L187.3,463.9 L162.7,447.7 L152.8,450.9 Z";
+
+function buildMap() {
+  const container = document.getElementById('map-svg-container');
+  // SVG viewbox is 500×600 (matching our path coordinate space)
+  const VW=500, VH=600;
+
+  // Determine display size — fit within wrap keeping aspect ratio
+  const wrap = document.getElementById('mapWrap');
+  const wW = wrap.clientWidth, wH = wrap.clientHeight;
+  const scale = Math.min(wW/VW, wH/VH) * 0.82;
+  const dispW = VW*scale, dispH = VH*scale;
+
+  container.style.width = dispW+'px';
+  container.style.height = dispH+'px';
+  container.style.position = 'relative';
+
+  // Build SVG
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox',`0 0 ${VW} ${VH}`);
+  svg.style.cssText = `width:100%;height:100%;position:absolute;top:0;left:0;`;
+
+  // Defs: glow filter + subtle grid
+  svg.innerHTML = `
+    <defs>
+      <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <filter id="glow2"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <!-- Grid lines -->
+    ${Array.from({length:10},(_,i)=>`
+      <line x1="${i*55}" y1="0" x2="${i*55}" y2="${VH}" stroke="#0d1e33" stroke-width="1"/>
+      <line x1="0" y1="${i*65}" x2="${VW}" y2="${i*65}" stroke="#0d1e33" stroke-width="1"/>
+    `).join('')}
+    <!-- Colombia shape - glow shadow -->
+    <path d="${COLOMBIA_PATH}" fill="rgba(0,229,255,0.06)" stroke="rgba(0,229,255,0.12)" stroke-width="2" filter="url(#glow2)"/>
+    <!-- Colombia shape - crisp outline -->
+    <path d="${COLOMBIA_PATH}" fill="rgba(0,229,255,0.04)" stroke="rgba(0,229,255,0.35)" stroke-width="1.2" filter="url(#glow)"/>
+    <!-- Country label -->
+    <text x="230" y="300" fill="rgba(0,229,255,0.06)" font-family="Bebas Neue,sans-serif" font-size="42" letter-spacing="12" text-anchor="middle">COLOMBIA</text>
+    <!-- City dots: Bogotá, Medellín, Cali -->
+    <circle cx="258" cy="260" r="2.5" fill="rgba(255,215,0,0.4)"/>
+    <text x="263" y="264" fill="rgba(255,215,0,0.35)" font-family="IBM Plex Mono,monospace" font-size="7">BOGOTÁ</text>
+    <circle cx="162" cy="195" r="2" fill="rgba(255,215,0,0.3)"/>
+    <text x="167" y="199" fill="rgba(255,215,0,0.25)" font-family="IBM Plex Mono,monospace" font-size="7">MEDELLÍN</text>
+    <circle cx="100" cy="290" r="2" fill="rgba(255,215,0,0.3)"/>
+    <text x="105" y="294" fill="rgba(255,215,0,0.25)" font-family="IBM Plex Mono,monospace" font-size="7">CALI</text>
+    <!-- Caribbean & Pacific labels -->
+    <text x="35" y="195" fill="rgba(0,229,255,0.08)" font-family="IBM Plex Mono,monospace" font-size="6" transform="rotate(-75,35,195)">OCÉANO PACÍFICO</text>
+    <text x="342" y="30" fill="rgba(0,229,255,0.08)" font-family="IBM Plex Mono,monospace" font-size="6">MAR CARIBE</text>
+    <!-- Buenaventura cluster indicator -->
+    <circle cx="89" cy="315" r="18" fill="none" stroke="rgba(0,229,255,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+    <text x="89" y="340" fill="rgba(0,229,255,0.25)" font-family="IBM Plex Mono,monospace" font-size="5.5" text-anchor="middle">BUENAVENTURA</text>
+    <!-- Puerto Antioquia cluster indicator -->
+    <circle cx="110" cy="175" r="14" fill="none" stroke="rgba(255,107,53,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+    <text x="110" y="194" fill="rgba(255,107,53,0.25)" font-family="IBM Plex Mono,monospace" font-size="5.5" text-anchor="middle">PTO. ANTIOQUIA</text>
+  `;
+  container.appendChild(svg);
+
+  // Port pins (HTML divs positioned over SVG)
+  PORTS.forEach(port => {
+    const pinColors = ['#00e5ff','#ff6b35','#39ff14','#00e5ff','#ff6b35','#ffd700','#b44fff'];
+    const col = pinColors[port.id];
+    const pin = document.createElement('div');
+    pin.className = 'map-pin';
+    pin.id = 'mpin-'+port.id;
+    const xPct = (port.sx / VW * 100);
+    const yPct = (port.sy / VH * 100);
+    pin.style.left = xPct+'%';
+    pin.style.top  = yPct+'%';
+    pin.style.position = 'absolute';
+    pin.innerHTML = `
+      <div class="pin-ripple" style="border-color:${col}55;animation-delay:${port.id*0.4}s"></div>
+      <div class="pin-pulse" style="background:${col};box-shadow:0 0 10px ${col},0 0 20px ${col}44"></div>
+      <div class="pin-tooltip">${port.short.toUpperCase()}</div>
+    `;
+    pin.addEventListener('click', () => selectPort(port.id));
+    container.appendChild(pin);
+  });
+}
+
+// ============================================================
+//  PORT LIST (sidebar)
+// ============================================================
+function getLatestAvail(portId) {
+  // Find the most recent month that has an availability value entered
+  const now = new Date();
+  for (let y = now.getFullYear(); y >= YEARS[0]; y--) {
+    const maxM = (y === now.getFullYear()) ? now.getMonth() : 11;
+    for (let mi = maxM; mi >= 0; mi--) {
+      const v = portAvail[portId]?.[y]?.[mi];
+      if (v !== null && v !== undefined) return { v, label: MONTHS[mi]+' '+y };
+    }
+  }
+  return null;
+}
+
+function buildPortList() {
+  const list = document.getElementById('portsList');
+  list.innerHTML = '';
+  PORTS.forEach(port => {
+    const allData = YEARS.flatMap(y => portStore[port.id][y]).filter(Boolean);
+    const total   = allData.reduce((s,d)=>s+d.totalScans,0);
+    const mths    = allData.length;
+    const latest  = getLatestAvail(port.id);
+    const col     = getDispColor(latest?.v ?? null);
+    const pct     = latest ? latest.v : 0;
+
+    const card = document.createElement('div');
+    card.className = 'pcard'; card.id = 'pcard-'+port.id;
+    card.innerHTML = `
+      <div class="pcard-name">${port.icon} ${port.name}</div>
+      <div class="pcard-loc">${port.dept} · ${port.lat.toFixed(3)}°N ${Math.abs(port.lng).toFixed(3)}°W</div>
+      <div class="pcard-stats">
+        <div><span class="pstat-val">${mths||'—'}</span><span class="pstat-lbl">MESES</span></div>
+        <div><span class="pstat-val">${total?total.toLocaleString('es-CO'):'—'}</span><span class="pstat-lbl">ESCANEOS</span></div>
+      </div>
+      <div class="pcard-disp">
+        <span class="disp-lbl" id="sidebar-lbl-${port.id}">DISPONIBILIDAD MENSUAL${latest?' · '+latest.label.toUpperCase():''}</span>
+        <div class="disp-row">
+          <div class="disp-bar-track">
+            <div class="disp-bar-fill" id="sidebar-fill-${port.id}"
+              style="width:${pct}%;background:${col}"></div>
+          </div>
+          <div class="disp-value-box" id="sidebar-box-${port.id}" style="cursor:default;opacity:${latest?'1':'0.4'}">
+            ${latest
+              ? `<span id="sidebar-val-${port.id}" style="color:${col};font-family:'Bebas Neue',sans-serif;font-size:1.1rem;display:inline-block;width:36px;text-align:right">${latest.v.toFixed(1)}</span>
+                 <span id="sidebar-pct-${port.id}" class="disp-pct" style="color:${col}">%</span>`
+              : `<span id="sidebar-val-${port.id}" style="font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:var(--dim)">Sin datos</span>
+                 <span id="sidebar-pct-${port.id}" class="disp-pct" style="display:none">%</span>`
+            }
+          </div>
+        </div>
+      </div>`;
+
+    card.addEventListener('click', () => selectPort(port.id));
+    list.appendChild(card);
+  });
+}
+
+function selectPort(portId) {
+  selPort = PORTS[portId];
+  document.querySelectorAll('.map-pin').forEach(p=>p.classList.remove('selected'));
+  document.querySelectorAll('.pcard').forEach(c=>c.classList.remove('active'));
+  const pin = document.getElementById('mpin-'+portId);
+  if(pin) pin.classList.add('selected');
+  const card = document.getElementById('pcard-'+portId);
+  if(card) card.classList.add('active');
+  setTimeout(()=>openMonths(portId), 200);
+}
+
+// ============================================================
+//  MONTHS VIEW
+// ============================================================
+function openMonths(portId) {
+  selPort = PORTS[portId];
+  document.getElementById('heroIcon').textContent = selPort.icon;
+  document.getElementById('heroName').textContent = selPort.name.toUpperCase();
+  document.getElementById('heroDept').textContent = selPort.dept.toUpperCase();
+  document.getElementById('heroCoords').textContent =
+    `${selPort.lat.toFixed(4)}° N  /  ${Math.abs(selPort.lng).toFixed(4)}° W`;
+
+  const grid = document.getElementById('monthsGrid');
+  grid.innerHTML = '';
+  YEARS.forEach(year => {
+    MONTHS.forEach((mName, mi) => {
+      const data  = portStore[portId][year][mi];
+      const avail = portAvail[portId][year][mi];
+      const col   = getDispColor(avail);
+      const pct   = avail !== null ? avail : 0;
+      const dispTxt = avail !== null ? avail.toFixed(1) : '';
+      const now   = new Date();
+      const isPast = year < now.getFullYear() || (year === now.getFullYear() && mi <= now.getMonth());
+      const card  = document.createElement('div');
+      card.className = 'mcard' + (data?' has-data':'') + (!isPast&&!data?' no-data':'');
+      card.innerHTML = `
+        <div class="mcard-name">${mName.toUpperCase()}</div>
+        <div class="mcard-year">${year}</div>
+        <div class="mcard-badge ${data?'loaded':'empty'}">${data?`✓ ${data.totalScans.toLocaleString('es-CO')} escaneos`:'Sin datos'}</div>
+        ${isPast&&!data?`
+        <div class="mcard-upload">
+          <label for="mu-${portId}-${year}-${mi}">⬆ Cargar XLS</label>
+          <input type="file" id="mu-${portId}-${year}-${mi}" accept=".xls,.xlsx"
+            onchange="loadMonthFile(this,${portId},${year},${mi})">
+        </div>`:''}
+        ${isPast ? `
+        <div class="pcard-disp" style="margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--border)">
+          <span class="disp-lbl">DISPONIBILIDAD DE SERVICIO</span>
+          <div class="disp-row">
+            <div class="disp-bar-track">
+              <div class="disp-bar-fill" id="disp-fill-${portId}-${year}-${mi}"
+                style="width:${pct}%;background:${col}"></div>
+            </div>
+            <div class="disp-value-box" onclick="event.stopPropagation()">
+              <input class="disp-input"
+                id="disp-inp-${portId}-${year}-${mi}"
+                type="text"
+                inputmode="decimal"
+                placeholder="00.0"
+                value="${dispTxt}"
+                style="color:${avail!==null?col:'var(--dim)'}"
+                onclick="event.stopPropagation()"
+                oninput="event.stopPropagation(); saveAvail(${portId},${year},${mi},this.value)"
+                onblur="event.stopPropagation(); saveAvail(${portId},${year},${mi},this.value)"
+              >
+              <span class="disp-pct" style="color:${avail!==null?col:'var(--dim)'}">%</span>
+            </div>
+          </div>
+          <div class="disp-hint">✏ Escribe el valor aquí arriba</div>
+        </div>` : ''}
+      `;
+      if (isPast || data) {
+        card.addEventListener('click',(e)=>{
+          if (e.target.tagName==='LABEL' || e.target.tagName==='INPUT' ||
+              e.target.closest('.pcard-disp')) return;
+          openDashboard(portId, year, mi);
+        });
+      }
+      grid.appendChild(card);
+    });
+  });
+  goTo('months', portId);
+}
+
+// ============================================================
+//  FILE LOADING
+// ============================================================
+function loadMonthFile(input, portId, year, monthIdx) {
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+      portStore[portId][year][monthIdx] = parseData(rows, PORTS[portId].short, MONTHS[monthIdx], year, monthIdx+1);
+      // Also upload to API if enabled
+      await uploadToAPI(file, portId, year, monthIdx);
+      buildPortList();
+      openMonths(portId);
+      setTimeout(()=>openDashboard(portId,year,monthIdx),150);
+    } catch(err){ alert('Error: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function loadDashFile(input) {
+  if(!selPort||selMonth===null) return;
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+      const parsed = parseData(rows, selPort.short, MONTHS[selMonth], selYear, selMonth+1);
+      portStore[selPort.id][selYear][selMonth] = parsed;
+      renderDashboard(parsed);
+      buildPortList();
+    } catch(err){ alert('Error: '+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ============================================================
+//  AUTO-DETECT FORMAT & PARSE
+// ============================================================
+function detectFormat(rows) {
+  if (!rows || !rows.length) return 'standard';
+  // Check for Rapiscan first
+  for (let i = 0; i < Math.min(rows.length, 60); i++) {
+    const r = rows[i]; if (!r) continue;
+    const vals = Array.isArray(r) ? r : Object.values(r);
+    if (vals.some(v => String(v||'').includes('Scan Date'))) return 'rapiscan';
+    if (vals.some(v => String(v||'').includes('Total Inspected'))) return 'rapiscan';
+    if (vals.some(v => String(v||'').includes('Cargo Inspection'))) return 'rapiscan';
+  }
+  // Check for TCBUEN: header row has 'Estado de flujo de trabajo' AND
+  // data rows have numeric estado values (100/102) instead of text like 'Completado'
+  if (Array.isArray(rows[0])) {
+    const headers = rows[0].map(h => String(h||''));
+    const estadoIdx = headers.findIndex(h => h.includes('Estado'));
+    if (estadoIdx >= 0 && rows.length > 1) {
+      const sampleVal = rows[1][estadoIdx];
+      if (sampleVal === 100 || sampleVal === 102 || sampleVal === '100' || sampleVal === '102') {
+        return 'tcbuen';
+      }
+    }
+  }
+  return 'standard';
+}
+
+function parseData(rows, portName, monthName, filterYear, filterMonth) {
+  const fmt = detectFormat(rows);
+  if (fmt === 'rapiscan') return parseRapiscan(rows, portName, monthName, filterYear, filterMonth);
+
+  // Convert arrays to objects using first row as header
+  let objRows = rows;
+  if (Array.isArray(rows[0])) {
+    const headers = rows[0];
+    objRows = rows.slice(1).map(r => {
+      const obj = {};
+      headers.forEach((h,i) => { if(h!=null) obj[String(h)] = r[i]; });
+      return obj;
+    });
+  }
+
+  if (fmt === 'tcbuen') return parseTCBUEN(objRows, portName, monthName);
+  return parseStandard(objRows, portName, monthName);
+}
+
+// --- Format C: TCBUEN (Estado numérico 100=OK, timestamp directo) ---
+function parseTCBUEN(rows, portName, monthName) {
+  const scans = rows.filter(r => {
+    const e = r['Estado de flujo de trabajo'];
+    return e === 100 || e === '100';
+  });
+  const daily={}, hourly={}, operators={};
+  scans.forEach(r => {
+    const raw = r['Fecha de creación'];
+    if (!raw) return;
+    let dt;
+    if (typeof raw === 'number') {
+      dt = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    } else if (raw instanceof Date) {
+      dt = raw;
+    } else {
+      dt = new Date(String(raw));
+    }
+    if (isNaN(dt.getTime())) return;
+    // Use local time since timestamps are in Colombia time
+    const day  = dt.getDate();
+    const hour = dt.getHours();
+    daily[day]  = (daily[day]||0)  + 1;
+    hourly[hour]= (hourly[hour]||0)+ 1;
+    const op = (r['Nombre de Usuario']||'Desconocido').toString().trim();
+    operators[op] = (operators[op]||0) + 1;
+  });
+  const total = scans.length;
+  const days  = Object.keys(daily).length;
+  const peak  = days ? Math.max(...Object.values(daily)) : 0;
+  const avg   = days ? Math.round(total/days) : 0;
+  return {portName, monthName, totalScans:total, daysActive:days, peakDay:peak, avgDaily:avg,
+          daily, hourly, operators, operatorCount:Object.keys(operators).length, format:'tcbuen'};
+}
+
+// --- Format A: standard (Miniatura-based) ---
+function parseStandard(rows, portName, monthName) {
+  const scans = rows.filter(r => {
+    const m = r['Miniatura'];
+    return m !== undefined && m !== null && m !== '';
+  });
+  const daily={}, hourly={}, operators={};
+  scans.forEach(r=>{
+    const ds=(r['Fecha de creación']||'').toString();
+    const dm=ds.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    const hm=ds.match(/(\d{2}):(\d{2}):(\d{2})/);
+    const isPM=/p\. ?m/i.test(ds), isAM=/a\. ?m/i.test(ds);
+    if(dm){const d=parseInt(dm[1]); daily[d]=(daily[d]||0)+1;}
+    if(hm){let h=parseInt(hm[1]); if(isPM&&h<12)h+=12; if(isAM&&h===12)h=0; hourly[h]=(hourly[h]||0)+1;}
+    const op=(r['Nombre de Usuario']||'Desconocido').toString().trim();
+    operators[op]=(operators[op]||0)+1;
+  });
+  const total=scans.length, days=Object.keys(daily).length;
+  const peak=days?Math.max(...Object.values(daily)):0;
+  const avg=days?Math.round(total/days):0;
+  return {portName,monthName,totalScans:total,daysActive:days,peakDay:peak,avgDaily:avg,
+          daily,hourly,operators,operatorCount:Object.keys(operators).length,format:'standard'};
+}
+
+// --- Format B: Rapiscan legacy (Cargo Inspection Report) ---
+function parseRapiscan(rows, portName, monthName, filterYear, filterMonth) {
+  // rows are raw arrays: rows[i][0]=date, rows[i][1]=Total, rows[i][2]=NonSuspect, rows[i][3]=Suspect
+
+  const daily  = {};
+  const hourly = {};
+  let totalFromSummary = 0;
+
+  // Find where the detail header row is ("Scan Date & Time")
+  let headerIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    if (r.some(v => String(v||'').includes('Scan Date'))) { headerIdx = i; break; }
+  }
+
+  // --- STEP 1: summary rows (above the detail header) ---
+  const summaryEnd = headerIdx === -1 ? rows.length : headerIdx;
+  for (let i = 0; i < summaryEnd; i++) {
+    const r = rows[i]; if (!r) continue;
+    const rawDate  = r[0];
+    const rawTotal = r[1];
+    if (rawDate === null || rawDate === undefined) continue;
+    const tot = parseInt(rawTotal);
+    if (isNaN(tot) || tot <= 0) continue;
+    if (String(rawDate).toLowerCase().includes('total')) continue;
+    if (String(rawDate).toLowerCase().includes('non')) continue;
+
+    let day = null, mon = null, yr = null;
+
+    if (typeof rawDate === 'number') {
+      // Excel serial number
+      const dt = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+      yr  = dt.getUTCFullYear();
+      mon = dt.getUTCMonth() + 1;
+      day = dt.getUTCDate();
+    } else {
+      const s = String(rawDate).trim();
+      const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (mdy) {
+        mon = parseInt(mdy[1]); day = parseInt(mdy[2]); yr = parseInt(mdy[3]);
+      } else if (iso) {
+        yr = parseInt(iso[1]); mon = parseInt(iso[2]); day = parseInt(iso[3]);
+      }
+    }
+
+    if (!day || !mon || !yr) continue;
+
+    // Fix Excel day/month inversion: if month≠filterMonth but day===filterMonth, swap
+    if (filterMonth && mon !== filterMonth && day === filterMonth) {
+      [mon, day] = [day, mon];
+    }
+
+    if (filterYear  && yr  !== filterYear)  continue;
+    if (filterMonth && mon !== filterMonth) continue;
+
+    daily[day] = (daily[day] || 0) + tot;
+    totalFromSummary += tot;
+  }
+
+  // --- STEP 2: detail rows for hourly distribution ---
+  if (headerIdx !== -1) {
+    const headerRow = rows[headerIdx];
+    const dateCol = headerRow.findIndex(v => String(v||'').includes('Scan Date'));
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+      const r = rows[i]; if (!r) continue;
+      const rawDate = r[dateCol];
+      if (!rawDate) continue;
+      let dt;
+      if (typeof rawDate === 'number') {
+        dt = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+      } else {
+        dt = new Date(String(rawDate));
+      }
+      if (isNaN(dt.getTime())) continue;
+      const yr2 = dt.getUTCFullYear(), mon2 = dt.getUTCMonth()+1;
+      if (filterYear  && yr2  !== filterYear)  continue;
+      if (filterMonth && mon2 !== filterMonth) continue;
+      const hour = dt.getUTCHours();
+      hourly[hour] = (hourly[hour]||0) + 1;
+    }
+  }
+
+  const total = totalFromSummary || Object.values(daily).reduce((s,v)=>s+v,0);
+  const days  = Object.keys(daily).length;
+  const peak  = days ? Math.max(...Object.values(daily)) : 0;
+  const avg   = days ? Math.round(total/days) : 0;
+
+  return {portName, monthName, totalScans:total, daysActive:days, peakDay:peak, avgDaily:avg,
+          daily, hourly, operators:{'Operador':total}, operatorCount:1, format:'rapiscan'};
+}
+
+
+
+// ============================================================
+//  DASHBOARD
+// ============================================================
+async function openDashboard(portId, year, monthIdx) {
+  selPort=PORTS[portId]; selYear=year; selMonth=monthIdx;
+  document.getElementById('ctxPort').textContent = selPort.short.toUpperCase();
+  document.getElementById('ctxMonth').textContent = '— '+MONTHS[monthIdx].toUpperCase()+' '+year;
+  let data = portStore[portId][year][monthIdx];
+  // If placeholder or missing, try loading from API
+  if ((!data || data.placeholder) && USE_API) {
+    data = await loadDashFromAPI(portId, year, monthIdx + 1);
+  }
+  renderDashboard(data || demoData());
+  goTo('dashboard', portId, year, monthIdx);
+}
+
+function demoData() {
+  return {portName:'Demo (Marzo)',monthName:'Marzo',totalScans:460,daysActive:21,peakDay:147,avgDaily:22,
+    daily:{1:6,2:43,3:51,4:103,5:147,6:69,14:3,15:1,16:1,17:4,18:3,19:2,21:1,22:1,23:1,24:1,25:4,26:10,27:2,28:5,31:2},
+    hourly:{0:13,1:12,2:20,3:18,4:22,5:20,6:6,7:6,8:19,9:16,10:22,11:24,12:23,13:19,14:32,15:26,16:21,17:29,18:33,19:13,20:19,21:21,22:14,23:12},
+    operators:{'Luis_AH':117,'Carlos_EV':112,'John_Zapata':102,'Leider_UrregoD':98,'Humberto_Paz':21,'Rapiscan':10},
+    operatorCount:6};
+}
+
+function renderDashboard(d) {
+  animNum('kpi-total',d.totalScans);
+  animNum('kpi-days',d.daysActive);
+  animNum('kpi-avg',d.avgDaily);
+  animNum('kpi-peak',d.peakDay);
+
+  // Availability KPI — read from portAvail for current port/year/month
+  const avail = (selPort && selYear !== null && selMonth !== null)
+    ? portAvail[selPort.id]?.[selYear]?.[selMonth] ?? null
+    : null;
+  const col = getDispColor(avail);
+  const availEl  = document.getElementById('kpi-avail');
+  const availBar = document.getElementById('kpi-avail-bar');
+  const availSub = document.getElementById('kpi-avail-sub');
+  const availCard= document.getElementById('kpi-avail-card');
+  if (avail !== null) {
+    availEl.textContent  = avail.toFixed(1) + '%';
+    availEl.style.color  = col;
+    availEl.style.textShadow = `0 0 20px ${col}55`;
+    availBar.style.width      = avail + '%';
+    availBar.style.background = col;
+    availSub.textContent = avail >= 95 ? '✓ Óptima' : avail >= 90 ? '⚠ Aceptable' : '✗ Por debajo del umbral';
+    availSub.style.color = col;
+  } else {
+    availEl.textContent  = '—';
+    availEl.style.color  = 'var(--dim)';
+    availEl.style.textShadow = 'none';
+    availBar.style.width = '0%';
+    availSub.textContent = 'Sin dato registrado';
+    availSub.style.color = 'var(--dim)';
+  }
+
+  document.getElementById('footerInfo').textContent =
+    `${d.portName} · ${d.monthName} · ${d.totalScans.toLocaleString('es-CO')} escaneos`;
+  renderBar(d);
+  renderHeatmap(d);
+  renderTable(d);
+}
+
+function animNum(id, target) {
+  const el=document.getElementById(id); let s=0; const step=target/50;
+  const t=setInterval(()=>{ s+=step;
+    if(s>=target){el.textContent=target.toLocaleString('es-CO');clearInterval(t);}
+    else el.textContent=Math.floor(s).toLocaleString('es-CO');
+  },18);
+}
+
+function renderBar(d) {
+  const days=Object.keys(d.daily).map(Number).sort((a,b)=>a-b);
+  const vals=days.map(dd=>d.daily[dd]);
+  const mx=Math.max(...vals);
+  const ctx=document.getElementById('dailyChart').getContext('2d');
+  if(chartDaily) chartDaily.destroy();
+  chartDaily=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:days.map(dd=>`${dd}`),
+      datasets:[{
+        label:'Escaneos',data:vals,
+        backgroundColor:vals.map(v=>{const p=v/mx; return `rgba(0,${Math.round(100+p*129)},${Math.round(80+p*175)},${0.35+p*0.55})`;} ),
+        borderColor:'rgba(0,229,255,0.4)',borderWidth:1,borderRadius:3
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false},tooltip:{
+        backgroundColor:'#0b1120',borderColor:'#1a2d4a',borderWidth:1,
+        titleColor:'#00e5ff',bodyColor:'#c8d8e8',
+        titleFont:{family:"'IBM Plex Mono'",size:10},
+        callbacks:{title:i=>`Día ${i[0].label}`,label:i=>` ${i.raw} escaneos`}
+      }},
+      scales:{
+        x:{grid:{color:'#0d1e33'},ticks:{color:'#4a6580',font:{family:"'IBM Plex Mono'",size:9}}},
+        y:{grid:{color:'#0d1e33'},ticks:{color:'#4a6580',font:{family:"'IBM Plex Mono'",size:9}},beginAtZero:true}
+      }
+    }
+  });
+}
+
+function renderHeatmap(d) {
+  const grid=document.getElementById('hmGrid'), labels=document.getElementById('hmLabels');
+  grid.innerHTML=''; labels.innerHTML='';
+  const mx=Math.max(...Object.values(d.hourly),1);
+  for(let h=0;h<24;h++){
+    const v=d.hourly[h]||0, i=v/mx;
+    const cell=document.createElement('div'); cell.className='hm-cell';
+    cell.style.background=`rgba(0,${Math.round(20+i*209)},${Math.round(50+i*205)},${0.15+i*0.85})`;
+    cell.title=`${h}:00 — ${v} escaneos`;
+    grid.appendChild(cell);
+    const lbl=document.createElement('div'); lbl.className='hm-lbl';
+    lbl.textContent=h%3===0?`${h}h`:'';
+    labels.appendChild(lbl);
+  }
+}
+
+function renderTable(d) {
+  document.getElementById('dashTbody').innerHTML=`
+    <tr>
+      <td style="color:var(--accent);font-weight:600"><span class="sdot"></span>${d.portName}</td>
+      <td style="color:var(--dim)">${d.monthName}</td>
+      <td class="num">${d.totalScans.toLocaleString('es-CO')}</td>
+      <td class="num">${d.daysActive}</td>
+      <td class="num">${d.peakDay.toLocaleString('es-CO')}</td>
+      <td class="num">${d.operatorCount}</td>
+      <td style="color:var(--accent3)">● CARGADO</td>
+    </tr>`;
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+const s=document.createElement('script');
+s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+s.onload=()=>{ buildMap(); buildPortList(); loadPortsFromAPI(); };
+document.head.appendChild(s);
+</script>
+</body>
+</html>
