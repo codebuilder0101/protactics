@@ -393,7 +393,7 @@ const API_URL = window.location.hostname === 'localhost'
   ? 'http://localhost:8000'
   : window.location.origin;
 
-const USE_API = false; // ← Cambiar a true cuando el backend esté desplegado
+const USE_API = true; // ← Conectado al backend FastAPI + PostgreSQL
 
 async function apiGet(path) {
   const r = await fetch(API_URL + path);
@@ -467,9 +467,11 @@ async function saveAvailToAPI(portId, year, mes) {
 }
 
 async function uploadToAPI(file, portId, year, monthIdx) {
+  // Sube el archivo Excel al backend, que lo parsea y lo PERSISTE en PostgreSQL.
+  // En modo offline (USE_API=false) no hace nada. Si falla, propaga el error
+  // para que el usuario sepa que NO se guardó en la base de datos.
   if (!USE_API) return null;
-  try { return await apiUpload(`/upload/${portId}/${year}/${monthIdx+1}`, file); }
-  catch(e) { console.warn('Error upload:', e.message); return null; }
+  return await apiUpload(`/upload/${portId}/${year}/${monthIdx+1}`, file);
 }
 
 // ============================================================
@@ -766,13 +768,16 @@ function selectPort(portId) {
 // ============================================================
 //  MONTHS VIEW
 // ============================================================
-function openMonths(portId) {
+async function openMonths(portId) {
   selPort = PORTS[portId];
   document.getElementById('heroIcon').textContent = selPort.icon;
   document.getElementById('heroName').textContent = selPort.name.toUpperCase();
   document.getElementById('heroDept').textContent = selPort.dept.toUpperCase();
   document.getElementById('heroCoords').textContent =
     `${selPort.lat.toFixed(4)}° N  /  ${Math.abs(selPort.lng).toFixed(4)}° W`;
+
+  // Cargar desde PostgreSQL qué meses ya tienen datos guardados.
+  await loadMesesFromAPI(portId);
 
   const grid = document.getElementById('monthsGrid');
   grid.innerHTML = '';
@@ -847,13 +852,16 @@ function loadMonthFile(input, portId, year, monthIdx) {
       const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+      // Parseo local inmediato (también sirve en modo offline).
       portStore[portId][year][monthIdx] = parseData(rows, PORTS[portId].short, MONTHS[monthIdx], year, monthIdx+1);
-      // Also upload to API if enabled
-      await uploadToAPI(file, portId, year, monthIdx);
+      // Persistir en PostgreSQL vía backend.
+      const res = await uploadToAPI(file, portId, year, monthIdx);
+      // Si se guardó, releer desde la BD para que la UI refleje lo persistido.
+      if (res) await loadDashFromAPI(portId, year, monthIdx + 1);
       buildPortList();
-      openMonths(portId);
+      await openMonths(portId);
       setTimeout(()=>openDashboard(portId,year,monthIdx),150);
-    } catch(err){ alert('Error: '+err.message); }
+    } catch(err){ alert('No se pudo guardar en la base de datos: '+err.message); }
   };
   reader.readAsArrayBuffer(file);
 }
@@ -862,16 +870,19 @@ function loadDashFile(input) {
   if(!selPort||selMonth===null) return;
   const file = input.files[0]; if(!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
       const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
-      const parsed = parseData(rows, selPort.short, MONTHS[selMonth], selYear, selMonth+1);
+      let parsed = parseData(rows, selPort.short, MONTHS[selMonth], selYear, selMonth+1);
       portStore[selPort.id][selYear][selMonth] = parsed;
+      // Persistir en PostgreSQL y releer lo guardado.
+      const res = await uploadToAPI(file, selPort.id, selYear, selMonth);
+      if (res) parsed = await loadDashFromAPI(selPort.id, selYear, selMonth + 1) || parsed;
       renderDashboard(parsed);
       buildPortList();
-    } catch(err){ alert('Error: '+err.message); }
+    } catch(err){ alert('No se pudo guardar en la base de datos: '+err.message); }
   };
   reader.readAsArrayBuffer(file);
 }

@@ -4,6 +4,7 @@ FastAPI + SQLAlchemy + PostgreSQL (SQLite para desarrollo local)
 """
 import io
 import os
+import calendar
 from datetime import datetime
 from typing import Optional
 
@@ -83,6 +84,23 @@ def rows_to_dicts(rows: list) -> list[dict]:
     return result
 
 
+def compute_availability(daily: dict, year: int, mes: int) -> float:
+    """Estima la disponibilidad del servicio a partir de los días operativos.
+
+    Disponibilidad = (días con actividad de escaneo / días del mes) × 100.
+    Para el mes en curso se usan los días transcurridos hasta hoy.
+    Devuelve un porcentaje realista entre 0 y 100 (1 decimal).
+    """
+    days_active = len([d for d, t in daily.items() if t])
+    if days_active == 0:
+        return 0.0
+    days_in_month = calendar.monthrange(year, mes)[1]
+    today = datetime.utcnow()
+    eff_days = today.day if (year == today.year and mes == today.month) else days_in_month
+    eff_days = max(eff_days, days_active)  # nunca dividir por menos que los días activos
+    return round(min(100.0, days_active / eff_days * 100.0), 1)
+
+
 def save_parsed_data(db: Session, puerto_id: int, year: int, mes: int,
                      data: dict, filename: str):
     """Guarda los datos parseados en la base de datos."""
@@ -127,6 +145,16 @@ def save_parsed_data(db: Session, puerto_id: int, year: int, mes: int,
             nombre_archivo=filename, formato=data["format"],
             total_escaneos=data["total_scans"]
         ))
+
+    # Disponibilidad estimada automáticamente a partir de los datos.
+    # Solo se rellena si el usuario NO ha fijado un valor manual antes.
+    disp = db.query(Disponibilidad).filter_by(
+        puerto_id=puerto_id, year=year, mes=mes).first()
+    auto = compute_availability(data["daily"], year, mes)
+    if disp is None:
+        db.add(Disponibilidad(puerto_id=puerto_id, year=year, mes=mes, valor=auto))
+    elif disp.valor is None:
+        disp.valor = auto
 
     db.commit()
 

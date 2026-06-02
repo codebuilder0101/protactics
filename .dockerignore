@@ -1,0 +1,34 @@
+# Mantener el contexto de build pequeño y la imagen limpia.
+# (Evita enviar al daemon los .xlsx de 130MB/75MB, el venv, etc.)
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+backend/.venv/
+.venv/
+venv/
+env/
+
+# Bases de datos / datos locales — NUNCA en la imagen
+*.db
+*.sqlite
+*.sqlite3
+*.xls
+*.xlsx
+reference/
+protactics_pgdata/
+
+# Artefactos solo-locales que no se necesitan en producción
+run.ps1
+*.pdf
+dashboard_puertos_colombia_standalone.html
+
+# Git / editor / SO
+.git/
+.gitignore
+.dockerignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
