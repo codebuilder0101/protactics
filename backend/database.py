@@ -1,13 +1,52 @@
 import os
+from urllib.parse import quote_plus
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import Base, Puerto
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./protactics.db")
 
-# Railway PostgreSQL uses postgres:// — SQLAlchemy needs postgresql://
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+def _resolve_database_url() -> str:
+    """Resuelve la URL de la base de datos de forma robusta.
+
+    - Variable AUSENTE  -> SQLite local (desarrollo).
+    - Variable PRESENTE pero VACÍA (típico de una referencia mal configurada en
+      Railway, p. ej. ${{Postgres.DATABASE_URL}} que no resuelve) -> se intenta
+      reconstruir desde las variables individuales PG* (PGHOST, PGUSER, ...).
+    - Si aún así no hay nada -> error claro y accionable (en vez del críptico
+      "Could not parse SQLAlchemy URL from string ''").
+    """
+    raw = os.getenv("DATABASE_URL")
+    if raw is None:
+        url = "sqlite:///./protactics.db"          # desarrollo local
+    else:
+        url = raw.strip()
+
+    if not url:
+        # Reconstruir desde las variables que Railway/Heroku exponen para Postgres
+        host = (os.getenv("PGHOST") or "").strip()
+        if host:
+            user = (os.getenv("PGUSER") or "postgres").strip()
+            pw   = quote_plus((os.getenv("PGPASSWORD") or "").strip())
+            port = (os.getenv("PGPORT") or "5432").strip()
+            db   = (os.getenv("PGDATABASE") or "railway").strip()
+            url = f"postgresql://{user}:{pw}@{host}:{port}/{db}"
+
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL está definida pero vacía y no hay variables PG* para "
+            "reconstruirla. En Railway, en el servicio de la app (no en el de la "
+            "base), define la variable DATABASE_URL referenciando tu servicio "
+            "PostgreSQL (p. ej. ${{Postgres.DATABASE_URL}}) o pega la cadena de "
+            "conexión completa (postgresql://usuario:clave@host:puerto/base)."
+        )
+
+    # Railway/Heroku usan postgres:// — SQLAlchemy necesita postgresql://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
+
+
+DATABASE_URL = _resolve_database_url()
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

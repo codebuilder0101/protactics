@@ -325,7 +325,7 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
       <div class="kpi-card">
         <div class="kpi-label">Total Escaneos</div>
         <div class="kpi-value" id="kpi-total">—</div>
-        <div class="kpi-sub">Con imagen de camión</div>
+        <div class="kpi-sub">Inspecciones totales del mes</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Días Activos</div>
@@ -969,22 +969,41 @@ function parseTCBUEN(rows, portName, monthName) {
           daily, hourly, operators, operatorCount:Object.keys(operators).length, format:'tcbuen'};
 }
 
-// --- Format A: standard (Miniatura-based) ---
+// --- Format A: standard (basado en inspecciones / 'Fecha de creación') ---
+const STD_DATE_LIKE = /^\s*\d{1,4}[-/]\d{1,2}[-/]\d{1,4}/;
+
+// Extrae [día, hora 0-23] de una Fecha de creación (Date, serial Excel, o texto
+// ISO 'YYYY-MM-DD HH:MM' o 'DD/MM/YYYY hh:mm:ss a. m.').
+function stdDayHour(raw){
+  if(raw instanceof Date && !isNaN(raw)) return [raw.getUTCDate(), raw.getUTCHours()];
+  if(typeof raw === 'number'){
+    const dt = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    if(!isNaN(dt)) return [dt.getUTCDate(), dt.getUTCHours()];
+  }
+  const s = String(raw==null?'':raw).trim();
+  let m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/);
+  if(m) return [parseInt(m[3],10), parseInt(m[4],10)];   // ISO: hora ya 24h
+  let day=null, hour=null;
+  const dm = s.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(dm) day=parseInt(dm[1],10);
+  const hm = s.match(/(\d{1,2}):(\d{2})/);
+  if(hm){ hour=parseInt(hm[1],10); if(/p\.?\s?m/i.test(s)&&hour<12)hour+=12; if(/a\.?\s?m/i.test(s)&&hour===12)hour=0; }
+  return [day,hour];
+}
+
 function parseStandard(rows, portName, monthName) {
-  const scans = rows.filter(r => {
-    const m = r['Miniatura'];
-    return m !== undefined && m !== null && m !== '';
-  });
+  // Una inspección = fila con 'Fecha de creación' presente
+  // (antes se filtraba por 'Miniatura', que casi siempre va vacía -> subcontaba).
+  const isEmpty = v => v===undefined || v===null || String(v).trim()===''
+                       || String(v).trim().toLowerCase()==='nan';
+  const scans = rows.filter(r => !isEmpty(r['Fecha de creación']));
   const daily={}, hourly={}, operators={};
   scans.forEach(r=>{
-    const ds=(r['Fecha de creación']||'').toString();
-    const dm=ds.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    const hm=ds.match(/(\d{2}):(\d{2}):(\d{2})/);
-    const isPM=/p\. ?m/i.test(ds), isAM=/a\. ?m/i.test(ds);
-    if(dm){const d=parseInt(dm[1]); daily[d]=(daily[d]||0)+1;}
-    if(hm){let h=parseInt(hm[1]); if(isPM&&h<12)h+=12; if(isAM&&h===12)h=0; hourly[h]=(hourly[h]||0)+1;}
-    const op=(r['Nombre de Usuario']||'Desconocido').toString().trim();
-    operators[op]=(operators[op]||0)+1;
+    const [day,hour] = stdDayHour(r['Fecha de creación']);
+    if(day!=null) daily[day]=(daily[day]||0)+1;
+    if(hour!=null) hourly[hour]=(hourly[hour]||0)+1;
+    let op=(r['Nombre de Usuario']==null?'':String(r['Nombre de Usuario'])).trim();
+    if(STD_DATE_LIKE.test(op)) op=null; else if(!op) op='Desconocido';
+    if(op) operators[op]=(operators[op]||0)+1;
   });
   const total=scans.length, days=Object.keys(daily).length;
   const peak=days?Math.max(...Object.values(daily)):0;
