@@ -86,9 +86,23 @@ class User(Base):
     email         = Column(String, nullable=False, unique=True, index=True)
     nombre        = Column(String)                       # nombre para mostrar
     password_hash = Column(String, nullable=False)       # bcrypt — nunca texto plano
+    # Perfil de acceso: admin | observador_global | observador | alimentador
+    role          = Column(String, nullable=False, default="observador")
+    # Puerto asignado para perfiles con alcance (observador / alimentador).
+    # NULL para admin / observador_global, o para cuentas aún sin configurar.
+    puerto_id     = Column(Integer, ForeignKey("puertos.id"), nullable=True)
+    # Aprobación: pending | approved | rejected
+    status        = Column(String, nullable=False, default="pending")
+    # Lo que el usuario pidió al registrarse (contexto para el administrador).
+    requested_role       = Column(String)
+    requested_puerto_id  = Column(Integer, ForeignKey("puertos.id"), nullable=True)
+    approved_by   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at   = Column(DateTime)
     created_at    = Column(DateTime, default=datetime.utcnow)
     last_login_at = Column(DateTime)
 
+    puerto           = relationship("Puerto", foreign_keys=[puerto_id])
+    requested_puerto = relationship("Puerto", foreign_keys=[requested_puerto_id])
     sessions = relationship("UserSession", back_populates="user",
                             cascade="all, delete-orphan")
 

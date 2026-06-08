@@ -1,6 +1,6 @@
 import os
 from urllib.parse import quote_plus
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from models import Base, Puerto
 
@@ -75,7 +75,37 @@ PUERTOS_SEED = [
          departamento="Magdalena", lat=11.241, lng=-74.199, icono="⛴", sx=196.3, sy=60.3, formato="standard"),
 ]
 
+# Columnas añadidas a `users` después de su creación original. Si la tabla ya
+# existía sin ellas (instalaciones previas), se agregan con ALTER TABLE para no
+# perder datos. Las filas existentes quedan 'approved' para no bloquear cuentas.
+_USER_COLUMNS = [
+    ("role",                "VARCHAR DEFAULT 'observador'"),
+    ("puerto_id",           "INTEGER"),
+    ("status",              "VARCHAR DEFAULT 'approved'"),
+    ("requested_role",      "VARCHAR"),
+    ("requested_puerto_id", "INTEGER"),
+    ("approved_by",         "INTEGER"),
+    ("approved_at",         "TIMESTAMP"),
+]
+
+
+def _ensure_user_columns():
+    insp = inspect(engine)
+    if "users" not in insp.get_table_names():
+        return
+    existing = {c["name"] for c in insp.get_columns("users")}
+    missing = [(n, ddl) for n, ddl in _USER_COLUMNS if n not in existing]
+    if not missing:
+        return
+    with engine.begin() as conn:
+        for name, ddl in missing:
+            conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
+        # Cuentas previas al flujo de aprobación se consideran aprobadas.
+        conn.execute(text("UPDATE users SET status='approved' WHERE status IS NULL"))
+
+
 def init_db():
+    _ensure_user_columns()              # migrar tablas preexistentes
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:

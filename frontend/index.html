@@ -46,9 +46,24 @@ header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-botto
   padding:.45rem .7rem;border-radius:6px;cursor:pointer;transition:all .18s;}
 .btn-logout:hover{background:rgba(255,107,53,.18);border-color:var(--accent2);box-shadow:0 0 14px rgba(255,107,53,.25);}
 .btn-logout svg{width:14px;height:14px;}
+.role-badge{font-family:'IBM Plex Mono',monospace;font-size:.52rem;letter-spacing:.1em;text-transform:uppercase;
+  padding:.3rem .55rem;border-radius:5px;white-space:nowrap;border:1px solid var(--border);color:var(--accent);
+  background:rgba(0,229,255,.07);}
+.role-badge.admin{color:var(--accent4);border-color:rgba(255,215,0,.4);background:rgba(255,215,0,.08);}
+.role-badge.feeder{color:var(--accent3);border-color:rgba(57,255,20,.35);background:rgba(57,255,20,.06);}
+.btn-admin{display:flex;align-items:center;gap:.4rem;background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.3);
+  color:var(--accent4);font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;
+  padding:.45rem .7rem;border-radius:6px;cursor:pointer;transition:all .18s;text-decoration:none;}
+.btn-admin:hover{background:rgba(255,215,0,.18);border-color:var(--accent4);box-shadow:0 0 14px rgba(255,215,0,.25);}
+.btn-admin svg{width:14px;height:14px;}
+.pending-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;
+  border-radius:9px;background:var(--accent2);color:#1a0a00;font-family:'IBM Plex Mono',monospace;font-size:.55rem;
+  font-weight:600;box-shadow:0 0 10px rgba(255,107,53,.5);}
+.pending-banner{margin:1rem 2rem;padding:1rem 1.3rem;border:1px solid rgba(255,215,0,.35);border-radius:10px;
+  background:rgba(255,215,0,.06);color:var(--accent4);font-size:.85rem;display:flex;align-items:center;gap:.7rem;}
 @media(max-width:720px){
   .user-email{display:none;}
-  .btn-logout span{display:none;}
+  .btn-logout span,.btn-admin span,.role-badge{display:none;}
   .user-meta{max-width:90px;}
 }
 
@@ -278,6 +293,20 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
         <div class="user-name" id="userName">—</div>
         <div class="user-email" id="userEmail">—</div>
       </div>
+      <span class="role-badge" id="roleBadge">—</span>
+      <a class="btn-admin" id="approvalsLink" href="/admin/approvals" title="Solicitudes de acceso" style="display:none">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M3 7.5 6 10.5 11 4"/>
+        </svg>
+        <span>Solicitudes</span>
+        <span class="pending-count" id="pendingCount" style="display:none">0</span>
+      </a>
+      <a class="btn-admin" id="adminLink" href="/admin" title="Gestionar usuarios" style="display:none">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4">
+          <circle cx="7" cy="4.2" r="2.4"/><path d="M2.4 12c0-2.5 2.1-4 4.6-4s4.6 1.5 4.6 4"/>
+        </svg>
+        <span>Usuarios</span>
+      </a>
       <button class="btn-logout" id="btnLogout" title="Cerrar sesión" onclick="logout()">
         <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4">
           <path d="M5.5 12.5H2.5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3M9.5 9.5 12.5 7 9.5 4.5M5.5 7h7"/>
@@ -298,6 +327,9 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
 
 <!-- VIEW 1: MAPA -->
 <div class="view active" id="view-map">
+  <div class="pending-banner" id="pendingBanner" style="display:none">
+    ⏳ Tu cuenta aún no tiene un puerto asignado. Un administrador debe configurarla para que puedas ver datos.
+  </div>
   <div class="map-layout">
     <div class="map-wrap" id="mapWrap">
       <div id="map-svg-container">
@@ -347,7 +379,7 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
         <span class="ctx-month" id="ctxMonth">—</span>
       </div>
     </div>
-    <div class="btn-file">
+    <div class="btn-file" id="dashUploadBtn">
       <input type="file" accept=".xls,.xlsx" onchange="loadDashFile(this)">
       ⬆ CARGAR / REEMPLAZAR XLS
     </div>
@@ -453,18 +485,61 @@ async function apiUpload(path, file) {
   return r.json();
 }
 
-// ── SESIÓN ─────────────────────────────────────────────────
+// ── SESIÓN Y PERFIL ────────────────────────────────────────
+let CURRENT_USER = null;
+let ROLE = null;
+let ALLOWED_IDS = null;        // null = todos los puertos; [] = ninguno (pendiente)
+let CAN_EDIT = false;          // puede subir XLS / editar disponibilidad
+
+const ROLE_LABELS = {
+  admin: 'Administrador',
+  observador_global: 'Observador global',
+  observador: 'Observador',
+  alimentador: 'Alimentador',
+};
+
 async function loadCurrentUser(){
   try{
     const r = await fetch('/api/auth/me', {credentials:'include'});
     if(!r.ok){ window.location.href='/login'; return; }
     const u = await r.json();
+    CURRENT_USER = u;
+    ROLE = u.role;
+    CAN_EDIT = (ROLE === 'admin' || ROLE === 'alimentador');
+
     const name = u.nombre || u.email.split('@')[0];
     document.getElementById('userName').textContent = name;
     document.getElementById('userEmail').textContent = u.email;
     document.getElementById('userAvatar').textContent = (name[0]||'·');
+
+    const badge = document.getElementById('roleBadge');
+    badge.textContent = ROLE_LABELS[ROLE] || ROLE;
+    badge.className = 'role-badge' + (ROLE==='admin'?' admin':'') + (ROLE==='alimentador'?' feeder':'');
+
+    if (ROLE === 'admin') {
+      document.getElementById('adminLink').style.display = 'flex';
+      document.getElementById('approvalsLink').style.display = 'flex';
+      loadPendingCount();   // muestra cuántas solicitudes esperan aprobación
+    }
     document.getElementById('userBox').style.display = 'flex';
+
+    // Quien no puede editar no ve el botón de carga del dashboard.
+    if (!CAN_EDIT) document.getElementById('dashUploadBtn').style.display = 'none';
   }catch(_){ window.location.href='/login'; }
+}
+
+// Contador de solicitudes pendientes para el administrador.
+async function loadPendingCount(){
+  try{
+    const r = await fetch('/api/auth/users?status=pending', {credentials:'include'});
+    if(!r.ok) return;
+    const pend = await r.json();
+    const badge = document.getElementById('pendingCount');
+    if(pend.length > 0){
+      badge.textContent = pend.length;
+      badge.style.display = 'inline-flex';
+    }
+  }catch(_){}
 }
 
 async function logout(){
@@ -477,14 +552,24 @@ async function loadPortsFromAPI() {
   if (!USE_API) return;
   try {
     const puertos = await apiGet('/puertos');
+    // El backend ya devuelve solo los puertos que este perfil puede ver.
+    ALLOWED_IDS = puertos.map(p => p.id);
     puertos.forEach(p => {
       if (p.ultima_disponibilidad) {
         const d = p.ultima_disponibilidad;
         portAvail[p.id][d.year][d.mes - 1] = d.valor;
       }
     });
+    // Perfil con alcance y sin puerto asignado → aviso de cuenta pendiente.
+    const pending = (ROLE === 'observador' || ROLE === 'alimentador') && ALLOWED_IDS.length === 0;
+    document.getElementById('pendingBanner').style.display = pending ? 'flex' : 'none';
     buildPortList();
   } catch(e) { console.warn('API offline, modo local:', e.message); }
+}
+
+// Puertos visibles según el perfil (ALLOWED_IDS null = todos).
+function visiblePorts() {
+  return ALLOWED_IDS == null ? PORTS : PORTS.filter(p => ALLOWED_IDS.includes(p.id));
 }
 
 async function loadMesesFromAPI(portId) {
@@ -731,8 +816,8 @@ function buildMap() {
   `;
   container.appendChild(svg);
 
-  // Port pins (HTML divs positioned over SVG)
-  PORTS.forEach(port => {
+  // Port pins (HTML divs positioned over SVG) — solo los puertos visibles
+  visiblePorts().forEach(port => {
     const pinColors = ['#00e5ff','#ff6b35','#39ff14','#00e5ff','#ff6b35','#ffd700','#b44fff'];
     const col = pinColors[port.id];
     const pin = document.createElement('div');
@@ -772,7 +857,7 @@ function getLatestAvail(portId) {
 function buildPortList() {
   const list = document.getElementById('portsList');
   list.innerHTML = '';
-  PORTS.forEach(port => {
+  visiblePorts().forEach(port => {
     const allData = YEARS.flatMap(y => portStore[port.id][y]).filter(Boolean);
     const total   = allData.reduce((s,d)=>s+d.totalScans,0);
     const mths    = allData.length;
@@ -854,7 +939,7 @@ async function openMonths(portId) {
         <div class="mcard-name">${mName.toUpperCase()}</div>
         <div class="mcard-year">${year}</div>
         <div class="mcard-badge ${data?'loaded':'empty'}">${data?`✓ ${data.totalScans.toLocaleString('es-CO')} escaneos`:'Sin datos'}</div>
-        ${isPast&&!data?`
+        ${isPast&&!data&&CAN_EDIT?`
         <div class="mcard-upload">
           <label for="mu-${portId}-${year}-${mi}">⬆ Cargar XLS</label>
           <input type="file" id="mu-${portId}-${year}-${mi}" accept=".xls,.xlsx"
@@ -869,6 +954,7 @@ async function openMonths(portId) {
                 style="width:${pct}%;background:${col}"></div>
             </div>
             <div class="disp-value-box" onclick="event.stopPropagation()">
+              ${CAN_EDIT ? `
               <input class="disp-input"
                 id="disp-inp-${portId}-${year}-${mi}"
                 type="text"
@@ -879,11 +965,13 @@ async function openMonths(portId) {
                 onclick="event.stopPropagation()"
                 oninput="event.stopPropagation(); saveAvail(${portId},${year},${mi},this.value)"
                 onblur="event.stopPropagation(); saveAvail(${portId},${year},${mi},this.value)"
-              >
+              >` : `
+              <span style="color:${avail!==null?col:'var(--dim)'};font-family:'Bebas Neue',sans-serif;font-size:1.1rem">
+                ${avail!==null?dispTxt:'—'}</span>`}
               <span class="disp-pct" style="color:${avail!==null?col:'var(--dim)'}">%</span>
             </div>
           </div>
-          <div class="disp-hint">✏ Escribe el valor aquí arriba</div>
+          ${CAN_EDIT ? `<div class="disp-hint">✏ Escribe el valor aquí arriba</div>` : ''}
         </div>` : ''}
       `;
       if (isPast || data) {
@@ -1299,11 +1387,18 @@ function renderTable(d) {
 // ============================================================
 //  INIT
 // ============================================================
-loadCurrentUser();
+// Chart.js para los gráficos del dashboard (no se necesita para el mapa).
 const s=document.createElement('script');
 s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
-s.onload=()=>{ buildMap(); buildPortList(); loadPortsFromAPI(); };
 document.head.appendChild(s);
+
+// Arranque: primero el perfil, luego los puertos permitidos, y al final el mapa
+// ya filtrado según el perfil.
+(async function init(){
+  await loadCurrentUser();     // perfil, badge, enlace admin, botón de carga
+  await loadPortsFromAPI();    // ALLOWED_IDS, disponibilidades, lista lateral, aviso pendiente
+  buildMap();                  // pines solo de los puertos visibles
+})();
 </script>
 </body>
 </html>

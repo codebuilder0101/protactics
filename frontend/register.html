@@ -37,10 +37,10 @@ a:hover{text-decoration:underline;}
 
 label{display:block;font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;
   color:var(--dim);margin:.95rem 0 .4rem;}
-input{width:100%;background:#060b15;border:1px solid var(--border);border-radius:8px;padding:.75rem .9rem;
+input,select{width:100%;background:#060b15;border:1px solid var(--border);border-radius:8px;padding:.75rem .9rem;
   color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:.95rem;transition:all .18s;}
-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.12);}
-input.invalid{border-color:var(--danger);}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.12);}
+input.invalid,select.invalid{border-color:var(--danger);}
 .field-err{color:var(--danger);font-size:.72rem;margin-top:.35rem;min-height:.9rem;font-weight:300;}
 .hint{color:var(--dim);font-size:.72rem;margin-top:.35rem;font-weight:300;}
 
@@ -97,6 +97,20 @@ input.invalid{border-color:var(--danger);}
     <input id="email" name="email" type="email" autocomplete="username" placeholder="tucorreo@dominio.com" required>
     <div class="field-err" id="emailErr"></div>
 
+    <label for="role">Perfil de acceso</label>
+    <select id="role" name="role">
+      <option value="observador">Observador · ve un puerto</option>
+      <option value="observador_global">Observador global · ve todos los puertos</option>
+      <option value="alimentador">Alimentador · sube XLS de un puerto</option>
+    </select>
+    <div class="field-err" id="roleErr"></div>
+
+    <div id="portWrap">
+      <label for="puerto">Puerto que necesitas</label>
+      <select id="puerto" name="puerto"></select>
+      <div class="field-err" id="portErr"></div>
+    </div>
+
     <label for="password">Contraseña</label>
     <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres" required>
     <div class="pw-meter"><span id="pwBar"></span></div>
@@ -115,18 +129,35 @@ input.invalid{border-color:var(--danger);}
   <div class="alt">¿Ya tienes cuenta? <a href="/login">Inicia sesión</a></div>
 </div>
 
+<!-- Pantalla de cuenta pendiente (se muestra tras un registro exitoso) -->
+<div class="card" id="pendingCard" style="display:none;text-align:center">
+  <div style="font-size:2.4rem;margin-bottom:.6rem">⏳</div>
+  <h2>Cuenta en revisión</h2>
+  <div class="sub" style="margin-bottom:1.2rem">Tu solicitud fue enviada correctamente.</div>
+  <p style="font-size:.92rem;font-weight:300;line-height:1.6;color:var(--text)">
+    Un administrador debe aprobar tu cuenta antes de que puedas ingresar.
+    Cuando te aprueben, inicia sesión con tu correo y contraseña.
+  </p>
+  <a class="btn-submit" href="/login" style="margin-top:1.6rem;text-decoration:none">Ir a iniciar sesión</a>
+</div>
+
 <div class="back"><a href="/">← Volver al inicio</a></div>
 
 <script>
 const MIN_PASSWORD = 8;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const SCOPED = new Set(['observador','alimentador']);
 
 const form = document.getElementById('registerForm');
 const nombreEl = document.getElementById('nombre');
 const emailEl  = document.getElementById('email');
+const roleEl   = document.getElementById('role');
+const portEl   = document.getElementById('puerto');
+const portWrap = document.getElementById('portWrap');
 const passEl   = document.getElementById('password');
 const confEl   = document.getElementById('confirm');
 const emailErr = document.getElementById('emailErr');
+const portErr  = document.getElementById('portErr');
 const passErr  = document.getElementById('passwordErr');
 const confErr  = document.getElementById('confirmErr');
 const formErr  = document.getElementById('formErr');
@@ -135,10 +166,24 @@ const btn = document.getElementById('submitBtn');
 const spinner = document.getElementById('spinner');
 const btnLabel = document.getElementById('btnLabel');
 
+// Cargar la lista de puertos (endpoint público, sin sesión) para el selector.
+fetch('/api/puertos/public')
+  .then(r => r.ok ? r.json() : [])
+  .then(ports => {
+    portEl.innerHTML = '<option value="">— elige un puerto —</option>' +
+      ports.map(p => `<option value="${p.id}">${p.nombre_corto}</option>`).join('');
+  })
+  .catch(()=>{});
+
+// El selector de puerto solo aplica a perfiles atados a un puerto.
+function syncPort(){ portWrap.style.display = SCOPED.has(roleEl.value) ? 'block' : 'none'; }
+roleEl.addEventListener('change', syncPort);
+syncPort();
+
 function clearErrors(){
   formErr.classList.remove('show'); formErr.textContent='';
-  emailErr.textContent=''; passErr.textContent=''; confErr.textContent='';
-  [emailEl,passEl,confEl].forEach(el=>el.classList.remove('invalid'));
+  emailErr.textContent=''; passErr.textContent=''; confErr.textContent=''; portErr.textContent='';
+  [emailEl,passEl,confEl,portEl].forEach(el=>el.classList.remove('invalid'));
 }
 function showFormError(msg){ formErr.textContent=msg; formErr.classList.add('show'); }
 function setLoading(on){
@@ -163,10 +208,14 @@ form.addEventListener('submit', async (e)=>{
   clearErrors();
   const nombre = nombreEl.value.trim();
   const email = emailEl.value.trim();
+  const role = roleEl.value;
   const password = passEl.value;
   const confirm = confEl.value;
+  const scoped = SCOPED.has(role);
+  const puerto_id = scoped && portEl.value !== '' ? Number(portEl.value) : null;
   let ok=true;
   if(!EMAIL_RE.test(email)){ emailErr.textContent='Ingresa un correo válido'; emailEl.classList.add('invalid'); ok=false; }
+  if(scoped && puerto_id === null){ portErr.textContent='Selecciona el puerto que necesitas'; portEl.classList.add('invalid'); ok=false; }
   if(password.length < MIN_PASSWORD){ passErr.textContent='La contraseña debe tener al menos '+MIN_PASSWORD+' caracteres'; passEl.classList.add('invalid'); ok=false; }
   if(confirm !== password){ confErr.textContent='Las contraseñas no coinciden'; confEl.classList.add('invalid'); ok=false; }
   if(!ok) return;
@@ -175,9 +224,17 @@ form.addEventListener('submit', async (e)=>{
   try{
     const r = await fetch('/api/auth/register', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      credentials:'include', body: JSON.stringify({email, password, nombre})
+      credentials:'include', body: JSON.stringify({email, password, nombre, role, puerto_id})
     });
-    if(r.ok){ window.location.href='/dashboard'; return; }
+    if(r.ok){
+      const u = await r.json();
+      // El primer usuario (admin) queda aprobado y con sesión → al panel.
+      if(u.status === 'approved'){ window.location.href='/dashboard'; return; }
+      // El resto queda pendiente → pantalla de cuenta en revisión.
+      form.parentElement.style.display='none';   // oculta la tarjeta del formulario
+      document.getElementById('pendingCard').style.display='block';
+      return;
+    }
     let msg='No fue posible crear la cuenta';
     try{ const d=await r.json(); if(d.detail) msg = Array.isArray(d.detail) ? (d.detail[0]?.msg||msg) : d.detail; }catch(_){}
     showFormError(msg);

@@ -16,12 +16,13 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db, init_db
+from database import get_db, init_db, SessionLocal
 from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
                     Operadores, Disponibilidad, ArchivosCargados, User)
 from parsers import parse_file
 from auth import (router as auth_router, get_current_user,
-                  user_from_token, COOKIE_NAME)
+                  user_from_token, COOKIE_NAME, can_view_port, can_upload_port,
+                  allowed_port_ids, ROLE_ADMIN, seed_demo_users)
 
 # ── App ────────────────────────────────────────────────────
 app = FastAPI(title="PROTACTICS API", version="1.0.0")
@@ -46,6 +47,13 @@ app.include_router(auth_router)
 @app.on_event("startup")
 def startup():
     init_db()
+    # Sembrar usuarios de demostración (uno por perfil) para pruebas.
+    if os.getenv("SEED_DEMO_USERS", "true").lower() in ("1", "true", "yes"):
+        db = SessionLocal()
+        try:
+            seed_demo_users(db)
+        finally:
+            db.close()
 
 
 # ── Frontend (páginas) ─────────────────────────────────────
@@ -84,6 +92,34 @@ def dashboard_page(request: Request, db: Session = Depends(get_db)):
     if not user_from_token(db, request.cookies.get(COOKIE_NAME)):
         return RedirectResponse("/login", status_code=302)
     return _page("index.html")
+
+
+@app.get("/admin")
+def admin_page(request: Request, db: Session = Depends(get_db)):
+    user = user_from_token(db, request.cookies.get(COOKIE_NAME))
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.role != ROLE_ADMIN:
+        return RedirectResponse("/dashboard", status_code=302)
+    return _page("admin.html")
+
+
+@app.get("/admin/approvals")
+def approvals_page(request: Request, db: Session = Depends(get_db)):
+    user = user_from_token(db, request.cookies.get(COOKIE_NAME))
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    if user.role != ROLE_ADMIN:
+        return RedirectResponse("/dashboard", status_code=302)
+    return _page("approvals.html")
+
+
+# ── Lista pública de puertos (solo nombres) para el registro ─
+@app.get("/api/puertos/public")
+def get_puertos_public(db: Session = Depends(get_db)):
+    puertos = db.query(Puerto).order_by(Puerto.id).all()
+    return [{"id": p.id, "nombre_corto": p.nombre_corto, "nombre": p.nombre}
+            for p in puertos]
 
 
 # ── MESES ──────────────────────────────────────────────────
@@ -205,8 +241,14 @@ def save_parsed_data(db: Session, puerto_id: int, year: int, mes: int,
 # ── GET /puertos ────────────────────────────────────────────
 @app.get("/puertos")
 def get_puertos(db: Session = Depends(get_db),
-                _user: User = Depends(get_current_user)):
-    puertos = db.query(Puerto).order_by(Puerto.id).all()
+                user: User = Depends(get_current_user)):
+    q = db.query(Puerto).order_by(Puerto.id)
+    ids = allowed_port_ids(user)        # None = todos
+    if ids is not None:
+        if not ids:                     # perfil con alcance sin puerto asignado
+            return []
+        q = q.filter(Puerto.id.in_(ids))
+    puertos = q.all()
     result = []
     for p in puertos:
         # Sumar todos los escaneos del puerto
@@ -240,8 +282,10 @@ async def upload_file(
     puerto_id: int, year: int, mes: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user)
 ):
+    if not can_upload_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para cargar datos en este puerto")
     puerto = db.query(Puerto).filter_by(id=puerto_id).first()
     if not puerto:
         raise HTTPException(404, "Puerto no encontrado")
@@ -276,7 +320,9 @@ async def upload_file(
 # ── GET /data/{puerto_id}/{year}/{mes} ──────────────────────
 @app.get("/data/{puerto_id}/{year}/{mes}")
 def get_data(puerto_id: int, year: int, mes: int, db: Session = Depends(get_db),
-             _user: User = Depends(get_current_user)):
+             user: User = Depends(get_current_user)):
+    if not can_view_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
     puerto = db.query(Puerto).filter_by(id=puerto_id).first()
     if not puerto:
         raise HTTPException(404, "Puerto no encontrado")
@@ -331,8 +377,10 @@ def get_data(puerto_id: int, year: int, mes: int, db: Session = Depends(get_db),
 # ── GET /meses/{puerto_id} ──────────────────────────────────
 @app.get("/meses/{puerto_id}")
 def get_meses(puerto_id: int, db: Session = Depends(get_db),
-              _user: User = Depends(get_current_user)):
+              user: User = Depends(get_current_user)):
     """Retorna qué meses tienen datos para un puerto."""
+    if not can_view_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
     archivos = db.query(ArchivosCargados)\
         .filter_by(puerto_id=puerto_id)\
         .order_by(ArchivosCargados.year, ArchivosCargados.mes).all()
@@ -361,8 +409,10 @@ def set_disponibilidad(
     puerto_id: int, year: int, mes: int,
     body: DispUpdate,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user)
 ):
+    if not can_upload_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para editar este puerto")
     if body.valor is not None and not (0 <= body.valor <= 100):
         raise HTTPException(400, "Valor debe estar entre 0 y 100")
 
@@ -380,7 +430,9 @@ def set_disponibilidad(
 # ── GET /disponibilidad/{puerto_id} ─────────────────────────
 @app.get("/disponibilidad/{puerto_id}")
 def get_disponibilidad(puerto_id: int, db: Session = Depends(get_db),
-                       _user: User = Depends(get_current_user)):
+                       user: User = Depends(get_current_user)):
+    if not can_view_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
     items = db.query(Disponibilidad)\
         .filter_by(puerto_id=puerto_id)\
         .order_by(Disponibilidad.year.desc(), Disponibilidad.mes.desc()).all()

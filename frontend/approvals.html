@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solicitudes · PROTACTICS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05080f; --panel:#0b1120; --border:#1a2d4a;
+  --accent:#00e5ff; --accent2:#ff6b35; --accent3:#39ff14; --accent4:#ffd700; --danger:#ff5a5a;
+  --text:#c8d8e8; --dim:#4a6580;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,.012) 2px,rgba(0,229,255,.012) 4px);}
+a{color:inherit;text-decoration:none;}
+
+header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-bottom:1px solid var(--border);
+  padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
+.logo{display:flex;align-items:center;gap:.8rem;}
+.logo svg{width:32px;height:32px;}
+.logo h1{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:.1em;color:var(--accent);text-shadow:0 0 18px rgba(0,229,255,.4);line-height:1;}
+.logo h1 span{display:block;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:var(--dim);letter-spacing:.2em;margin-top:2px;}
+.hdr-right{display:flex;align-items:center;gap:.7rem;}
+.btn{font-family:'IBM Plex Mono',monospace;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;
+  padding:.5rem .8rem;border-radius:6px;cursor:pointer;border:1px solid var(--border);transition:all .18s;display:inline-flex;align-items:center;gap:.4rem;background:transparent;color:var(--text);}
+.btn:hover{border-color:var(--accent);color:var(--accent);}
+.btn-logout{border-color:rgba(255,107,53,.3);color:var(--accent2);background:rgba(255,107,53,.08);}
+.btn-logout:hover{border-color:var(--accent2);color:var(--accent2);}
+
+.wrap{max-width:1000px;margin:0 auto;padding:2rem;}
+.page-title{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:.04em;color:#eaf6ff;margin-bottom:.2rem;
+  display:flex;align-items:center;gap:.8rem;}
+.count-pill{font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.05em;color:var(--accent4);
+  border:1px solid rgba(255,215,0,.4);background:rgba(255,215,0,.08);border-radius:20px;padding:.2rem .7rem;}
+.page-sub{font-size:.85rem;color:var(--dim);margin-bottom:1.6rem;}
+
+.req-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:1.3rem 1.4rem;margin-bottom:1rem;
+  display:grid;grid-template-columns:1fr auto;gap:1.2rem;align-items:center;}
+.req-card.left-accent{border-left:3px solid var(--accent4);}
+.req-who .name{font-size:1rem;color:#eaf6ff;font-weight:600;}
+.req-who .email{font-family:'IBM Plex Mono',monospace;font-size:.62rem;color:var(--dim);margin-top:.15rem;}
+.req-meta{display:flex;gap:1.4rem;margin-top:.8rem;flex-wrap:wrap;}
+.req-meta .lbl{font-family:'IBM Plex Mono',monospace;font-size:.5rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);}
+.req-meta .val{font-size:.85rem;color:var(--accent);margin-top:.15rem;}
+
+.req-actions{display:flex;flex-direction:column;gap:.6rem;min-width:230px;}
+.action-row{display:flex;gap:.5rem;align-items:center;}
+select{background:#060b15;border:1px solid var(--border);border-radius:6px;padding:.45rem .55rem;color:var(--text);
+  font-family:'IBM Plex Sans',sans-serif;font-size:.8rem;width:100%;transition:all .15s;}
+select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,229,255,.12);}
+select:disabled{opacity:.4;}
+.btn-sm{font-family:'IBM Plex Mono',monospace;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;
+  padding:.5rem .8rem;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .15s;white-space:nowrap;}
+.btn-approve{background:linear-gradient(135deg,var(--accent3),#2bd40e);color:#04210a;font-weight:600;flex:1;}
+.btn-approve:hover{box-shadow:0 0 16px rgba(57,255,20,.4);}
+.btn-reject{background:rgba(255,90,90,.08);border-color:rgba(255,90,90,.3);color:#ff9b9b;flex:1;}
+.btn-reject:hover{background:rgba(255,90,90,.18);border-color:var(--danger);}
+
+.empty{background:var(--panel);border:1px dashed var(--border);border-radius:12px;padding:3rem 2rem;text-align:center;color:var(--dim);}
+.empty .big{font-size:2rem;margin-bottom:.6rem;}
+
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;
+  background:#0b1120;border:1px solid var(--border);border-radius:8px;padding:.7rem 1.2rem;font-size:.85rem;
+  transition:all .25s;pointer-events:none;z-index:500;box-shadow:0 10px 30px rgba(0,0,0,.5);}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast.ok{border-color:rgba(57,255,20,.4);color:var(--accent3);}
+.toast.err{border-color:rgba(255,90,90,.4);color:#ff9b9b;}
+
+@media(max-width:720px){
+  .req-card{grid-template-columns:1fr;}
+  .req-actions{min-width:0;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 34 34" fill="none">
+      <circle cx="17" cy="17" r="15" stroke="#00e5ff" stroke-width="1" opacity=".3"/>
+      <circle cx="17" cy="17" r="9"  stroke="#00e5ff" stroke-width="1" opacity=".5"/>
+      <circle cx="17" cy="17" r="3.5" stroke="#00e5ff" stroke-width="1"/>
+      <circle cx="17" cy="17" r="2" fill="#00e5ff"/>
+    </svg>
+    <h1>PROTACTICS <span>SOLICITUDES DE ACCESO</span></h1>
+  </div>
+  <div class="hdr-right">
+    <a class="btn" href="/admin">Usuarios</a>
+    <a class="btn" href="/dashboard">← Volver al panel</a>
+    <button class="btn btn-logout" onclick="logout()">Cerrar sesión</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="page-title">Solicitudes pendientes <span class="count-pill" id="countPill">0</span></div>
+  <div class="page-sub">Revisa quién se registró y aprueba o rechaza su acceso. Para Observador y Alimentador debes asignar un puerto.</div>
+
+  <div id="reqList"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ROLE_OPTS = [
+  {v:'observador',        t:'Observador'},
+  {v:'observador_global', t:'Observador global'},
+  {v:'alimentador',       t:'Alimentador'},
+  {v:'admin',             t:'Administrador'},
+];
+const ROLE_LABELS = {observador:'Observador', observador_global:'Observador global', alimentador:'Alimentador', admin:'Administrador'};
+const SCOPED = new Set(['observador','alimentador']);
+let PUERTOS = [];
+let ME = null;
+
+function toast(msg, ok=true){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (ok?'ok':'err');
+  setTimeout(()=>{ t.className='toast'; }, 2600);
+}
+
+async function api(path, opts={}){
+  const r = await fetch(path, {credentials:'include', headers:{'Content-Type':'application/json'}, ...opts});
+  if(r.status === 401){ window.location.href='/login'; throw new Error('No autenticado'); }
+  if(r.status === 403){ window.location.href='/dashboard'; throw new Error('Sin permiso'); }
+  if(!r.ok){
+    let msg='Error'; try{ const d=await r.json(); msg=Array.isArray(d.detail)?(d.detail[0]?.msg||msg):(d.detail||msg); }catch(_){}
+    throw new Error(msg);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+function portOptions(selectedId){
+  const none = `<option value="">— elegir puerto —</option>`;
+  return none + PUERTOS.map(p =>
+    `<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.nombre_corto}</option>`).join('');
+}
+function roleOptions(selected){
+  return ROLE_OPTS.map(o => `<option value="${o.v}" ${o.v===selected?'selected':''}>${o.t}</option>`).join('');
+}
+
+function cardTpl(u){
+  const reqRole = u.requested_role || u.role;
+  const scoped = SCOPED.has(reqRole);
+  return `<div class="req-card left-accent" data-id="${u.id}">
+    <div class="req-who">
+      <div class="name">${u.nombre || u.email.split('@')[0]}</div>
+      <div class="email">${u.email}</div>
+      <div class="req-meta">
+        <div><div class="lbl">Perfil solicitado</div><div class="val">${ROLE_LABELS[reqRole]||reqRole}</div></div>
+        <div><div class="lbl">Puerto solicitado</div><div class="val">${u.requested_puerto_nombre || '—'}</div></div>
+      </div>
+    </div>
+    <div class="req-actions">
+      <div class="action-row">
+        <select class="a-role" onchange="onRole(${u.id})">${roleOptions(reqRole)}</select>
+      </div>
+      <div class="action-row">
+        <select class="a-port" ${scoped?'':'disabled'}>${portOptions(u.requested_puerto_id)}</select>
+      </div>
+      <div class="action-row">
+        <button class="btn-sm btn-approve" onclick="approve(${u.id})">✓ Aprobar</button>
+        <button class="btn-sm btn-reject" onclick="reject(${u.id})">✕ Rechazar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function onRole(id){
+  const card = document.querySelector(`.req-card[data-id="${id}"]`);
+  const role = card.querySelector('.a-role').value;
+  const port = card.querySelector('.a-port');
+  if(SCOPED.has(role)){ port.disabled = false; }
+  else { port.disabled = true; port.value=''; }
+}
+
+async function approve(id){
+  const card = document.querySelector(`.req-card[data-id="${id}"]`);
+  const role = card.querySelector('.a-role').value;
+  const portVal = card.querySelector('.a-port').value;
+  const puerto_id = portVal === '' ? null : Number(portVal);
+  if(SCOPED.has(role) && puerto_id === null){ toast('Asigna un puerto para este perfil', false); return; }
+  try{
+    await api(`/api/auth/users/${id}/approve`, {method:'POST', body: JSON.stringify({role, puerto_id})});
+    toast('Usuario aprobado');
+    await load();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function reject(id){
+  if(!confirm('¿Rechazar esta solicitud? El usuario no podrá ingresar.')) return;
+  try{
+    await api(`/api/auth/users/${id}/reject`, {method:'POST'});
+    toast('Solicitud rechazada');
+    await load();
+  }catch(e){ toast(e.message, false); }
+}
+
+async function load(){
+  const pend = await api('/api/auth/users?status=pending');
+  document.getElementById('countPill').textContent = pend.length;
+  const list = document.getElementById('reqList');
+  list.innerHTML = pend.length
+    ? pend.map(cardTpl).join('')
+    : `<div class="empty"><div class="big">✅</div>No hay solicitudes pendientes.<br>Todo al día.</div>`;
+}
+
+async function init(){
+  try{
+    ME = await api('/api/auth/me');
+    if(ME.role !== 'admin'){ window.location.href='/dashboard'; return; }
+    PUERTOS = await api('/puertos');
+    await load();
+  }catch(e){ /* api() redirige en 401/403 */ }
+}
+
+async function logout(){
+  try{ await fetch('/api/auth/logout', {method:'POST', credentials:'include'}); }catch(_){}
+  window.location.href='/';
+}
+
+init();
+</script>
+</body>
+</html>
