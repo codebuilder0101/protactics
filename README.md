@@ -1,5 +1,9 @@
 # PROTACTICS — Dashboard Escáner Portuario
 
+# Server Start Command
+powershell -ExecutionPolicy Bypass -File run.ps1
+
+
 Sistema de monitoreo operacional para 7 escáneres portuarios en Colombia.
 
 ---
