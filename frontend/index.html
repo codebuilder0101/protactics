@@ -33,6 +33,25 @@ header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-botto
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
 #clock{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--dim);}
 
+/* USER BOX */
+.user-box{display:flex;align-items:center;gap:.6rem;padding-left:1rem;margin-left:.4rem;border-left:1px solid var(--border);}
+.user-avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--accent),#0bb5cc);color:#02151b;font-weight:600;font-size:.8rem;text-transform:uppercase;
+  box-shadow:0 0 14px rgba(0,229,255,.35);}
+.user-meta{display:flex;flex-direction:column;line-height:1.15;max-width:160px;}
+.user-name{font-size:.72rem;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.user-email{font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.btn-logout{display:flex;align-items:center;gap:.4rem;background:rgba(255,107,53,.08);border:1px solid rgba(255,107,53,.3);
+  color:var(--accent2);font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;
+  padding:.45rem .7rem;border-radius:6px;cursor:pointer;transition:all .18s;}
+.btn-logout:hover{background:rgba(255,107,53,.18);border-color:var(--accent2);box-shadow:0 0 14px rgba(255,107,53,.25);}
+.btn-logout svg{width:14px;height:14px;}
+@media(max-width:720px){
+  .user-email{display:none;}
+  .btn-logout span{display:none;}
+  .user-meta{max-width:90px;}
+}
+
 /* BREADCRUMB */
 .breadcrumb{padding:.55rem 2rem;background:rgba(0,229,255,.025);border-bottom:1px solid var(--border);
   display:flex;align-items:center;gap:.5rem;font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--dim);letter-spacing:.1em;}
@@ -253,6 +272,19 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
   <div class="hdr-right">
     <div class="live"><div class="live-dot"></div>SISTEMA ACTIVO</div>
     <div id="clock">--:--:--</div>
+    <div class="user-box" id="userBox" style="display:none">
+      <div class="user-avatar" id="userAvatar">·</div>
+      <div class="user-meta">
+        <div class="user-name" id="userName">—</div>
+        <div class="user-email" id="userEmail">—</div>
+      </div>
+      <button class="btn-logout" id="btnLogout" title="Cerrar sesión" onclick="logout()">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M5.5 12.5H2.5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3M9.5 9.5 12.5 7 9.5 4.5M5.5 7h7"/>
+        </svg>
+        <span>Cerrar sesión</span>
+      </button>
+    </div>
   </div>
 </header>
 
@@ -395,24 +427,50 @@ const API_URL = window.location.hostname === 'localhost'
 
 const USE_API = true; // ← Conectado al backend FastAPI + PostgreSQL
 
+// Si la sesión caduca a mitad de uso, el backend responde 401 → al login.
+function handleAuth(r){
+  if (r.status === 401) { window.location.href = '/login'; throw new Error('No autenticado'); }
+  return r;
+}
+
 async function apiGet(path) {
-  const r = await fetch(API_URL + path);
+  const r = handleAuth(await fetch(API_URL + path, {credentials:'include'}));
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function apiPut(path, body) {
-  const r = await fetch(API_URL + path, {
+  const r = handleAuth(await fetch(API_URL + path, {
     method:'PUT', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body)
-  });
+    credentials:'include', body: JSON.stringify(body)
+  }));
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function apiUpload(path, file) {
   const fd = new FormData(); fd.append('file', file);
-  const r = await fetch(API_URL + path, {method:'POST', body:fd});
+  const r = handleAuth(await fetch(API_URL + path, {method:'POST', credentials:'include', body:fd}));
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+// ── SESIÓN ─────────────────────────────────────────────────
+async function loadCurrentUser(){
+  try{
+    const r = await fetch('/api/auth/me', {credentials:'include'});
+    if(!r.ok){ window.location.href='/login'; return; }
+    const u = await r.json();
+    const name = u.nombre || u.email.split('@')[0];
+    document.getElementById('userName').textContent = name;
+    document.getElementById('userEmail').textContent = u.email;
+    document.getElementById('userAvatar').textContent = (name[0]||'·');
+    document.getElementById('userBox').style.display = 'flex';
+  }catch(_){ window.location.href='/login'; }
+}
+
+async function logout(){
+  try{ await fetch('/api/auth/logout', {method:'POST', credentials:'include'}); }
+  catch(_){}
+  window.location.href = '/';
 }
 
 async function loadPortsFromAPI() {
@@ -1241,6 +1299,7 @@ function renderTable(d) {
 // ============================================================
 //  INIT
 // ============================================================
+loadCurrentUser();
 const s=document.createElement('script');
 s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
 s.onload=()=>{ buildMap(); buildPortList(); loadPortsFromAPI(); };

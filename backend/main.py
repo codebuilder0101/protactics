@@ -10,41 +10,80 @@ from typing import Optional
 
 import openpyxl
 import xlrd
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
 from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
-                    Operadores, Disponibilidad, ArchivosCargados)
+                    Operadores, Disponibilidad, ArchivosCargados, User)
 from parsers import parse_file
+from auth import (router as auth_router, get_current_user,
+                  user_from_token, COOKIE_NAME)
 
 # ── App ────────────────────────────────────────────────────
 app = FastAPI(title="PROTACTICS API", version="1.0.0")
 
+# CORS restringido + credenciales (cookies). Un "*" es incompatible con
+# cookies en el navegador, por eso se fija el/los origen(es) del frontend.
+FRONTEND_ORIGINS = [o.strip() for o in os.getenv(
+    "FRONTEND_ORIGIN", "http://localhost:8000,http://127.0.0.1:8000"
+).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=FRONTEND_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
+
 
 @app.on_event("startup")
 def startup():
     init_db()
 
-# Serve frontend
-if os.path.exists("../frontend"):
-    app.mount("/app", StaticFiles(directory="../frontend", html=True), name="frontend")
+
+# ── Frontend (páginas) ─────────────────────────────────────
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+
+
+def _page(name: str) -> FileResponse:
+    return FileResponse(
+        os.path.join(FRONTEND_DIR, name),
+        headers={"Cache-Control": "no-store"},  # evita ver páginas cacheadas tras logout
+    )
+
 
 @app.get("/")
-def root():
-    if os.path.exists("../frontend/index.html"):
-        return FileResponse("../frontend/index.html")
-    return {"status": "PROTACTICS API running", "docs": "/docs"}
+def landing():
+    """Página de aterrizaje pública (misión y propósito)."""
+    return _page("landing.html")
+
+
+@app.get("/login")
+def login_page(request: Request, db: Session = Depends(get_db)):
+    if user_from_token(db, request.cookies.get(COOKIE_NAME)):
+        return RedirectResponse("/dashboard", status_code=302)
+    return _page("login.html")
+
+
+@app.get("/register")
+def register_page(request: Request, db: Session = Depends(get_db)):
+    if user_from_token(db, request.cookies.get(COOKIE_NAME)):
+        return RedirectResponse("/dashboard", status_code=302)
+    return _page("register.html")
+
+
+@app.get("/dashboard")
+def dashboard_page(request: Request, db: Session = Depends(get_db)):
+    if not user_from_token(db, request.cookies.get(COOKIE_NAME)):
+        return RedirectResponse("/login", status_code=302)
+    return _page("index.html")
 
 
 # ── MESES ──────────────────────────────────────────────────
@@ -165,7 +204,8 @@ def save_parsed_data(db: Session, puerto_id: int, year: int, mes: int,
 
 # ── GET /puertos ────────────────────────────────────────────
 @app.get("/puertos")
-def get_puertos(db: Session = Depends(get_db)):
+def get_puertos(db: Session = Depends(get_db),
+                _user: User = Depends(get_current_user)):
     puertos = db.query(Puerto).order_by(Puerto.id).all()
     result = []
     for p in puertos:
@@ -199,7 +239,8 @@ def get_puertos(db: Session = Depends(get_db)):
 async def upload_file(
     puerto_id: int, year: int, mes: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user)
 ):
     puerto = db.query(Puerto).filter_by(id=puerto_id).first()
     if not puerto:
@@ -234,7 +275,8 @@ async def upload_file(
 
 # ── GET /data/{puerto_id}/{year}/{mes} ──────────────────────
 @app.get("/data/{puerto_id}/{year}/{mes}")
-def get_data(puerto_id: int, year: int, mes: int, db: Session = Depends(get_db)):
+def get_data(puerto_id: int, year: int, mes: int, db: Session = Depends(get_db),
+             _user: User = Depends(get_current_user)):
     puerto = db.query(Puerto).filter_by(id=puerto_id).first()
     if not puerto:
         raise HTTPException(404, "Puerto no encontrado")
@@ -288,7 +330,8 @@ def get_data(puerto_id: int, year: int, mes: int, db: Session = Depends(get_db))
 
 # ── GET /meses/{puerto_id} ──────────────────────────────────
 @app.get("/meses/{puerto_id}")
-def get_meses(puerto_id: int, db: Session = Depends(get_db)):
+def get_meses(puerto_id: int, db: Session = Depends(get_db),
+              _user: User = Depends(get_current_user)):
     """Retorna qué meses tienen datos para un puerto."""
     archivos = db.query(ArchivosCargados)\
         .filter_by(puerto_id=puerto_id)\
@@ -317,7 +360,8 @@ class DispUpdate(BaseModel):
 def set_disponibilidad(
     puerto_id: int, year: int, mes: int,
     body: DispUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user)
 ):
     if body.valor is not None and not (0 <= body.valor <= 100):
         raise HTTPException(400, "Valor debe estar entre 0 y 100")
@@ -335,7 +379,8 @@ def set_disponibilidad(
 
 # ── GET /disponibilidad/{puerto_id} ─────────────────────────
 @app.get("/disponibilidad/{puerto_id}")
-def get_disponibilidad(puerto_id: int, db: Session = Depends(get_db)):
+def get_disponibilidad(puerto_id: int, db: Session = Depends(get_db),
+                       _user: User = Depends(get_current_user)):
     items = db.query(Disponibilidad)\
         .filter_by(puerto_id=puerto_id)\
         .order_by(Disponibilidad.year.desc(), Disponibilidad.mes.desc()).all()

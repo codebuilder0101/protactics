@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROTACTICS · Sistema Escáner Portuario</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05080f; --panel:#0b1120; --border:#1a2d4a;
+  --accent:#00e5ff; --accent2:#ff6b35; --accent3:#39ff14; --accent4:#ffd700;
+  --text:#c8d8e8; --dim:#4a6580; --grid:#0d1e33;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,.012) 2px,rgba(0,229,255,.012) 4px);}
+/* ambient glow */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:-1;
+  background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(0,229,255,.10),transparent 60%),
+             radial-gradient(ellipse 60% 50% at 90% 10%,rgba(255,215,0,.05),transparent 55%);}
+a{color:inherit;text-decoration:none;}
+
+/* HEADER */
+header{background:linear-gradient(180deg,#071525 0%,rgba(5,8,15,.7) 100%);border-bottom:1px solid var(--border);
+  padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:200;backdrop-filter:blur(6px);}
+.logo{display:flex;align-items:center;gap:.8rem;}
+.logo svg{width:34px;height:34px;}
+.logo h1{font-family:'Bebas Neue',sans-serif;font-size:1.35rem;letter-spacing:.1em;color:var(--accent);
+  text-shadow:0 0 18px rgba(0,229,255,.4);line-height:1;}
+.logo h1 span{display:block;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:var(--dim);letter-spacing:.2em;margin-top:2px;}
+.hdr-right{display:flex;align-items:center;gap:.8rem;}
+
+.btn{font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;
+  padding:.6rem 1.3rem;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .18s;display:inline-flex;align-items:center;gap:.5rem;}
+.btn-ghost{border-color:var(--border);color:var(--text);background:rgba(0,229,255,.03);}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 0 16px rgba(0,229,255,.18);}
+.btn-primary{background:linear-gradient(135deg,var(--accent),#0bb5cc);color:#02151b;font-weight:600;
+  box-shadow:0 0 22px rgba(0,229,255,.3);}
+.btn-primary:hover{box-shadow:0 0 30px rgba(0,229,255,.55);transform:translateY(-1px);}
+.btn-lg{padding:.85rem 1.8rem;font-size:.78rem;}
+
+/* HERO */
+.hero{max-width:1100px;margin:0 auto;padding:5.5rem 2rem 3rem;text-align:center;}
+.eyebrow{display:inline-flex;align-items:center;gap:.5rem;font-family:'IBM Plex Mono',monospace;font-size:.62rem;
+  letter-spacing:.22em;color:var(--accent3);border:1px solid var(--border);border-radius:30px;
+  padding:.4rem 1rem;margin-bottom:1.8rem;background:rgba(57,255,20,.04);}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent3);box-shadow:0 0 8px var(--accent3);animation:pulse 1.6s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
+.hero h2{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.6rem,7vw,5rem);line-height:.98;letter-spacing:.02em;
+  color:#eaf6ff;text-shadow:0 0 40px rgba(0,229,255,.25);margin-bottom:1.3rem;}
+.hero h2 b{color:var(--accent);font-weight:400;}
+.hero p.lead{max-width:680px;margin:0 auto 2.4rem;font-size:1.08rem;font-weight:300;color:var(--text);line-height:1.6;}
+.hero-cta{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
+
+/* MISSION */
+section{max-width:1100px;margin:0 auto;padding:2.5rem 2rem;}
+.section-tag{font-family:'IBM Plex Mono',monospace;font-size:.6rem;letter-spacing:.25em;color:var(--accent);
+  text-transform:uppercase;margin-bottom:.8rem;display:flex;align-items:center;gap:.6rem;}
+.section-tag::before{content:'';width:26px;height:1px;background:var(--accent);}
+.mission{background:linear-gradient(160deg,rgba(11,17,32,.9),rgba(7,13,25,.6));border:1px solid var(--border);
+  border-radius:14px;padding:2.6rem;position:relative;overflow:hidden;}
+.mission::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--accent),transparent);}
+.mission h3{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:.03em;color:#eaf6ff;margin-bottom:1rem;}
+.mission p{font-size:1.02rem;font-weight:300;line-height:1.7;color:var(--text);max-width:820px;}
+.mission p + p{margin-top:1rem;}
+.mission .accent{color:var(--accent);font-weight:600;}
+
+/* PURPOSE / FEATURES */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;margin-top:1.4rem;}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:1.7rem;transition:all .2s;}
+.card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 30px rgba(0,0,0,.4),0 0 22px rgba(0,229,255,.08);}
+.card .ic{font-size:1.7rem;margin-bottom:.9rem;display:block;filter:drop-shadow(0 0 10px rgba(0,229,255,.4));}
+.card h4{font-size:1.05rem;color:#eaf6ff;margin-bottom:.5rem;font-weight:600;}
+.card p{font-size:.9rem;font-weight:300;line-height:1.6;color:var(--dim);}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:1.4rem;}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:1.6rem 1.2rem;text-align:center;}
+.stat .v{font-family:'Bebas Neue',sans-serif;font-size:2.6rem;color:var(--accent);line-height:1;text-shadow:0 0 20px rgba(0,229,255,.3);}
+.stat .l{font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-top:.6rem;}
+
+/* CTA banner */
+.cta-band{max-width:1100px;margin:3rem auto 1rem;padding:0 2rem;}
+.cta-inner{background:linear-gradient(135deg,rgba(0,229,255,.08),rgba(255,215,0,.04));border:1px solid var(--border);
+  border-radius:14px;padding:2.6rem;text-align:center;}
+.cta-inner h3{font-family:'Bebas Neue',sans-serif;font-size:2.1rem;color:#eaf6ff;letter-spacing:.03em;margin-bottom:.6rem;}
+.cta-inner p{color:var(--dim);font-weight:300;margin-bottom:1.6rem;}
+
+/* FOOTER */
+footer{border-top:1px solid var(--border);margin-top:3rem;padding:1.4rem 2rem;
+  display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
+  font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.1em;color:var(--dim);}
+
+@media(max-width:760px){
+  header{padding:0 1rem;}
+  .logo h1{font-size:1.1rem;}
+  .grid,.stats{grid-template-columns:1fr 1fr;}
+  .hero{padding-top:3.5rem;}
+  .mission{padding:1.6rem;}
+}
+@media(max-width:460px){
+  .grid,.stats{grid-template-columns:1fr;}
+  .hdr-right .btn-ghost{display:none;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 34 34" fill="none">
+      <circle cx="17" cy="17" r="15" stroke="#00e5ff" stroke-width="1" opacity=".3"/>
+      <circle cx="17" cy="17" r="9"  stroke="#00e5ff" stroke-width="1" opacity=".5"/>
+      <circle cx="17" cy="17" r="3.5" stroke="#00e5ff" stroke-width="1"/>
+      <line x1="17" y1="2" x2="17" y2="32" stroke="#00e5ff" stroke-width=".5" opacity=".3"/>
+      <line x1="2"  y1="17" x2="32" y2="17" stroke="#00e5ff" stroke-width=".5" opacity=".3"/>
+      <path d="M17 17 L30 8" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" opacity=".9">
+        <animateTransform attributeName="transform" type="rotate" from="0 17 17" to="360 17 17" dur="4s" repeatCount="indefinite"/>
+      </path>
+      <circle cx="17" cy="17" r="2" fill="#00e5ff"/>
+    </svg>
+    <h1>SISTEMA ESCÁNER PORTUARIO <span style="color:var(--accent4)">PROTACTICS</span>
+      <span>TABLERO DE CONTROL OPERACIONAL · COLOMBIA</span>
+    </h1>
+  </div>
+  <div class="hdr-right" id="hdrRight">
+    <a class="btn btn-ghost" href="/login">Iniciar sesión</a>
+    <a class="btn btn-primary" href="/register">Registrarse</a>
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="eyebrow"><span class="dot"></span>CONTROL DE ESCÁNERES PORTUARIOS EN VIVO</div>
+  <h2>Toda la operación de los<br><b>escáneres portuarios</b> de Colombia en una sola pantalla</h2>
+  <p class="lead">
+    Reunimos en un mismo lugar lo que cada puerto escanea día a día. Mira cuántas
+    inspecciones se hicieron, a qué horas hubo más movimiento, cómo va la disponibilidad
+    de cada escáner y quién estuvo operando. Se acabaron las hojas sueltas y andar
+    persiguiendo reportes.
+  </p>
+  <div class="hero-cta">
+    <a class="btn btn-primary btn-lg" href="/register">Crear cuenta gratis</a>
+    <a class="btn btn-ghost btn-lg" href="/login">Ya tengo cuenta</a>
+  </div>
+</div>
+
+<!-- MISSION -->
+<section>
+  <div class="section-tag">Nuestra misión</div>
+  <div class="mission">
+    <h3>Saber qué pasa en cada escáner, sin vueltas</h3>
+    <p>
+      Por cada puerto del país pasan miles de contenedores y todos se inspeccionan. Esa
+      información pesa para la <span class="accent">seguridad del país</span>, para el comercio
+      y para frenar el contrabando, pero casi siempre termina regada en archivos distintos,
+      con formatos que no cuadran y reportes que nadie junta.
+    </p>
+    <p>
+      Lo nuestro es ponerle orden. Juntamos lo que registran todos los escáneres del país
+      en una sola plataforma <span class="accent">clara y de fiar</span>, para que el equipo
+      sepa qué está pasando, dónde y cuándo, sin adivinar y sin esperas.
+    </p>
+  </div>
+</section>
+
+<!-- PURPOSE -->
+<section>
+  <div class="section-tag">Para qué sirve</div>
+  <div class="grid">
+    <div class="card">
+      <span class="ic">🗺️</span>
+      <h4>Mapa operacional</h4>
+      <p>Mira todos los puertos del país en un mapa y entra a cualquiera con un clic.</p>
+    </div>
+    <div class="card">
+      <span class="ic">📊</span>
+      <h4>Métricas del mes</h4>
+      <p>Total de escaneos, días con operación, promedio y el día más alto. Todo calculado solo.</p>
+    </div>
+    <div class="card">
+      <span class="ic">⏱️</span>
+      <h4>Actividad por hora</h4>
+      <p>Un mapa de calor te muestra a qué horas hay más movimiento y dónde se traba la operación.</p>
+    </div>
+    <div class="card">
+      <span class="ic">📈</span>
+      <h4>Disponibilidad del servicio</h4>
+      <p>Lleva la cuenta de cuánto operó cada escáner en el mes. Lo saca solo o lo ajustas tú.</p>
+    </div>
+    <div class="card">
+      <span class="ic">📥</span>
+      <h4>Carga de reportes</h4>
+      <p>Sube el archivo de cada puerto y queda listo al instante. Lee Standard, Rapiscan y TCBUEN.</p>
+    </div>
+    <div class="card">
+      <span class="ic">🔐</span>
+      <h4>Acceso controlado</h4>
+      <p>Aquí solo entra quien tiene cuenta. Los datos quedan a la vista de tu equipo y de nadie más.</p>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section>
+  <div class="section-tag">Cobertura</div>
+  <div class="stats">
+    <div class="stat"><div class="v">7</div><div class="l">Escáneres conectados</div></div>
+    <div class="stat"><div class="v">4</div><div class="l">Departamentos</div></div>
+    <div class="stat"><div class="v">3</div><div class="l">Formatos que lee</div></div>
+    <div class="stat"><div class="v">24/7</div><div class="l">Datos siempre al día</div></div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-band">
+  <div class="cta-inner">
+    <h3>Empieza hoy mismo</h3>
+    <p>Crea tu cuenta y entra al tablero en un minuto.</p>
+    <a class="btn btn-primary btn-lg" href="/register">Crear mi cuenta</a>
+  </div>
+</div>
+
+<footer>
+  <span>SISTEMA DE MONITOREO PORTUARIO · COLOMBIA</span>
+  <span>PROTACTICS · TABLERO DE CONTROL OPERACIONAL</span>
+  <span>Procesado por Claude · Anthropic</span>
+</footer>
+
+<script>
+// Si ya hay sesión activa, cambia los CTA por "Ir al panel".
+fetch('/api/auth/me', {credentials:'include'})
+  .then(r => r.ok ? r.json() : null)
+  .then(u => {
+    if (!u) return;
+    document.getElementById('hdrRight').innerHTML =
+      '<a class="btn btn-primary" href="/dashboard">Ir al panel →</a>';
+  })
+  .catch(()=>{});
+</script>
+</body>
+</html>

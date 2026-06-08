@@ -77,3 +77,29 @@ class ArchivosCargados(Base):
     formato     = Column(String)
     total_escaneos = Column(Integer)
     cargado_en  = Column(DateTime, default=datetime.utcnow)
+
+
+# ── AUTENTICACIÓN ──────────────────────────────────────────
+class User(Base):
+    __tablename__ = "users"
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    email         = Column(String, nullable=False, unique=True, index=True)
+    nombre        = Column(String)                       # nombre para mostrar
+    password_hash = Column(String, nullable=False)       # bcrypt — nunca texto plano
+    created_at    = Column(DateTime, default=datetime.utcnow)
+    last_login_at = Column(DateTime)
+
+    sessions = relationship("UserSession", back_populates="user",
+                            cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    token        = Column(String, nullable=False, unique=True, index=True)  # opaco, aleatorio
+    user_id      = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow)
+    expires_at   = Column(DateTime, nullable=False)
+    last_seen_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="sessions")
