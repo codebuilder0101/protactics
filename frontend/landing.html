@@ -104,7 +104,12 @@ footer{border-top:1px solid var(--border);margin-top:3rem;padding:1.4rem 2rem;
 }
 @media(max-width:460px){
   .grid,.stats{grid-template-columns:1fr;}
-  .hdr-right .btn-ghost{display:none;}
+  /* Ambos botones visibles; se compactan y se oculta el subtítulo del logo
+     para que entren sin desbordar en pantallas angostas. */
+  header{padding:0 .8rem;}
+  .logo h1 span{display:none;}
+  .hdr-right{gap:.4rem;}
+  .hdr-right .btn{padding:.5rem .7rem;font-size:.6rem;}
 }
 </style>
 </head>
@@ -128,8 +133,8 @@ footer{border-top:1px solid var(--border);margin-top:3rem;padding:1.4rem 2rem;
     </h1>
   </div>
   <div class="hdr-right" id="hdrRight">
-    <a class="btn btn-ghost" href="/login">Iniciar sesión</a>
-    <a class="btn btn-primary" href="/register">Registrarse</a>
+    <a class="btn btn-primary" href="/login">Iniciar sesión</a>
+    <a class="btn btn-ghost" href="/register">Registrarse</a>
   </div>
 </header>
 
