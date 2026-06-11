@@ -39,9 +39,10 @@ class EscaneosHorarios(Base):
     puerto_id   = Column(Integer, ForeignKey("puertos.id"), nullable=False)
     year        = Column(Integer, nullable=False)
     mes         = Column(Integer, nullable=False)
+    dia         = Column(Integer, nullable=False, default=0)   # 1-31 (por día para acumular)
     hora        = Column(Integer, nullable=False)   # 0-23
     total       = Column(Integer, default=0)
-    __table_args__ = (UniqueConstraint("puerto_id","year","mes","hora"),)
+    __table_args__ = (UniqueConstraint("puerto_id","year","mes","dia","hora"),)
 
 
 class Operadores(Base):
@@ -50,9 +51,10 @@ class Operadores(Base):
     puerto_id   = Column(Integer, ForeignKey("puertos.id"), nullable=False)
     year        = Column(Integer, nullable=False)
     mes         = Column(Integer, nullable=False)
+    dia         = Column(Integer, nullable=False, default=0)   # 1-31 (por día para acumular)
     nombre      = Column(String, nullable=False)
     total       = Column(Integer, default=0)
-    __table_args__ = (UniqueConstraint("puerto_id","year","mes","nombre"),)
+    __table_args__ = (UniqueConstraint("puerto_id","year","mes","dia","nombre"),)
 
 
 class Disponibilidad(Base):

@@ -1,46 +1,24 @@
-"""Parser Formato C — TCBUEN (Estado numérico 100 = completado)"""
-from datetime import datetime, timezone, timedelta
+"""Parser Formato C — TCBUEN (Estado de flujo de trabajo == 100 = completado).
+
+Solo cuenta los escaneos con Estado 100. Produce desglose por día (by_day) para
+acumular reportes diarios.
+"""
+from parsers.dates import to_ymdh, DayBuckets
 
 
-def _to_dt(raw) -> datetime | None:
-    if raw is None:
-        return None
-    if isinstance(raw, datetime):
-        return raw
-    if isinstance(raw, (int, float)):
-        try:
-            return datetime(1899, 12, 30) + timedelta(days=float(raw))
-        except Exception:
-            return None
-    try:
-        return datetime.fromisoformat(str(raw)[:19])
-    except Exception:
-        return None
-
-
-def parse(rows: list[dict], port_name: str, month_name: str) -> dict:
+def parse(rows: list, port_name: str, month_name: str,
+          filter_year: int = None, filter_month: int = None) -> dict:
     scans = [r for r in rows
              if str(r.get("Estado de flujo de trabajo", "")).strip() in ("100", "100.0")]
 
-    daily, hourly, operators = {}, {}, {}
-
+    buckets = DayBuckets()
     for r in scans:
-        dt = _to_dt(r.get("Fecha de creación"))
-        if not dt:
+        y, mo, day, hour = to_ymdh(r.get("Fecha de creación"), filter_month)
+        if filter_year and y and y != filter_year:
             continue
-        day  = dt.day
-        hour = dt.hour
-        daily[day]   = daily.get(day, 0) + 1
-        hourly[hour] = hourly.get(hour, 0) + 1
+        if filter_month and mo and mo != filter_month:
+            continue
         op = str(r.get("Nombre de Usuario") or "Desconocido").strip()
-        operators[op] = operators.get(op, 0) + 1
+        buckets.add(day, hour, op)
 
-    total = len(scans)
-    days  = len(daily)
-    peak  = max(daily.values(), default=0)
-    avg   = round(total / days) if days else 0
-
-    return dict(port_name=port_name, month_name=month_name, total_scans=total,
-                days_active=days, peak_day=peak, avg_daily=avg,
-                daily=daily, hourly=hourly, operators=operators,
-                operatorCount=len(operators), format="tcbuen")
+    return buckets.result(port_name, month_name, "tcbuen")

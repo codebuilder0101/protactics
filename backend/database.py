@@ -104,8 +104,25 @@ def _ensure_user_columns():
         conn.execute(text("UPDATE users SET status='approved' WHERE status IS NULL"))
 
 
+def _ensure_daily_schema():
+    """Las tablas de horas y operadores ahora llevan columna `dia` (para acumular
+    reportes diarios). Si existen con el esquema viejo (sin `dia`), se recrean.
+    Sus datos son derivados y se regeneran al volver a subir los archivos; los
+    totales diarios (escaneos_diarios) no se tocan.
+    """
+    insp = inspect(engine)
+    tables = insp.get_table_names()
+    with engine.begin() as conn:
+        for t in ("escaneos_horarios", "operadores"):
+            if t in tables:
+                cols = {c["name"] for c in insp.get_columns(t)}
+                if "dia" not in cols:
+                    conn.execute(text(f"DROP TABLE {t}"))
+
+
 def init_db():
     _ensure_user_columns()              # migrar tablas preexistentes
+    _ensure_daily_schema()              # esquema por día para horas/operadores
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:

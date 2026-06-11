@@ -481,7 +481,11 @@ async function apiPut(path, body) {
 async function apiUpload(path, file) {
   const fd = new FormData(); fd.append('file', file);
   const r = handleAuth(await fetch(API_URL + path, {method:'POST', credentials:'include', body:fd}));
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    let msg = await r.text();
+    try { const j = JSON.parse(msg); if (j.detail) msg = j.detail; } catch(_){}
+    throw new Error(msg);
+  }
   return r.json();
 }
 

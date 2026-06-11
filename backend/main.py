@@ -14,6 +14,7 @@ from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db, SessionLocal
@@ -176,56 +177,74 @@ def compute_availability(daily: dict, year: int, mes: int) -> float:
     return round(min(100.0, days_active / eff_days * 100.0), 1)
 
 
+def _by_day(data: dict) -> dict:
+    """Obtiene el desglose por día del parser. Si por algún motivo no viene,
+    lo reconstruye desde los agregados (queda todo bajo el día reportado)."""
+    if data.get("by_day"):
+        return data["by_day"]
+    # Reconstrucción de respaldo: un único día (el primero de 'daily').
+    by_day = {}
+    for dia, total in data.get("daily", {}).items():
+        by_day[int(dia)] = {"total": int(total),
+                            "hourly": data.get("hourly", {}),
+                            "operators": data.get("operators", {})}
+    return by_day
+
+
 def save_parsed_data(db: Session, puerto_id: int, year: int, mes: int,
                      data: dict, filename: str):
-    """Guarda los datos parseados en la base de datos."""
+    """Acumula los datos del reporte. Solo reemplaza los DÍAS presentes en este
+    archivo, de modo que los reportes diarios se suman en el mes sin borrar los
+    días ya cargados. Volver a subir un día corrige solo ese día."""
 
-    # Eliminar datos previos del mismo período
-    db.query(EscaneosDiarios).filter_by(puerto_id=puerto_id, year=year, mes=mes).delete()
-    db.query(EscaneosHorarios).filter_by(puerto_id=puerto_id, year=year, mes=mes).delete()
-    db.query(Operadores).filter_by(puerto_id=puerto_id, year=year, mes=mes).delete()
+    by_day = _by_day(data)
 
-    # Insertar escaneos diarios
-    for dia, total in data["daily"].items():
-        db.add(EscaneosDiarios(
-            puerto_id=puerto_id, year=year, mes=mes,
-            dia=int(dia), total=int(total)
-        ))
+    for dia, info in by_day.items():
+        dia = int(dia)
+        # Reemplazar SOLO este día (acumulación + corrección idempotente).
+        db.query(EscaneosDiarios).filter_by(
+            puerto_id=puerto_id, year=year, mes=mes, dia=dia).delete()
+        db.query(EscaneosHorarios).filter_by(
+            puerto_id=puerto_id, year=year, mes=mes, dia=dia).delete()
+        db.query(Operadores).filter_by(
+            puerto_id=puerto_id, year=year, mes=mes, dia=dia).delete()
 
-    # Insertar distribución horaria
-    for hora, total in data["hourly"].items():
-        db.add(EscaneosHorarios(
-            puerto_id=puerto_id, year=year, mes=mes,
-            hora=int(hora), total=int(total)
-        ))
+        db.add(EscaneosDiarios(puerto_id=puerto_id, year=year, mes=mes,
+                               dia=dia, total=int(info["total"])))
+        for hora, total in info.get("hourly", {}).items():
+            db.add(EscaneosHorarios(puerto_id=puerto_id, year=year, mes=mes,
+                                    dia=dia, hora=int(hora), total=int(total)))
+        for nombre, total in info.get("operators", {}).items():
+            db.add(Operadores(puerto_id=puerto_id, year=year, mes=mes,
+                              dia=dia, nombre=str(nombre), total=int(total)))
 
-    # Insertar operadores
-    for nombre, total in data.get("operators", {}).items():
-        db.add(Operadores(
-            puerto_id=puerto_id, year=year, mes=mes,
-            nombre=str(nombre), total=int(total)
-        ))
+    db.flush()
 
-    # Registro de archivo
+    # Total acumulado del mes (todos los días ya guardados).
+    month_total = db.query(func.coalesce(func.sum(EscaneosDiarios.total), 0))\
+        .filter_by(puerto_id=puerto_id, year=year, mes=mes).scalar() or 0
+    month_daily = {d.dia: d.total for d in db.query(EscaneosDiarios)
+                   .filter_by(puerto_id=puerto_id, year=year, mes=mes).all()}
+
+    # Registro de archivo: refleja el total ACUMULADO del mes.
     existing = db.query(ArchivosCargados).filter_by(
         puerto_id=puerto_id, year=year, mes=mes).first()
     if existing:
         existing.nombre_archivo = filename
         existing.formato = data["format"]
-        existing.total_escaneos = data["total_scans"]
+        existing.total_escaneos = month_total
         existing.cargado_en = datetime.utcnow()
     else:
         db.add(ArchivosCargados(
             puerto_id=puerto_id, year=year, mes=mes,
             nombre_archivo=filename, formato=data["format"],
-            total_escaneos=data["total_scans"]
+            total_escaneos=month_total
         ))
 
-    # Disponibilidad estimada automáticamente a partir de los datos.
-    # Solo se rellena si el usuario NO ha fijado un valor manual antes.
+    # Disponibilidad estimada sobre el mes ACUMULADO. Solo si no hay valor manual.
     disp = db.query(Disponibilidad).filter_by(
         puerto_id=puerto_id, year=year, mes=mes).first()
-    auto = compute_availability(data["daily"], year, mes)
+    auto = compute_availability(month_daily, year, mes)
     if disp is None:
         db.add(Disponibilidad(puerto_id=puerto_id, year=year, mes=mes, valor=auto))
     elif disp.valor is None:
@@ -290,12 +309,26 @@ async def upload_file(
     if not puerto:
         raise HTTPException(404, "Puerto no encontrado")
 
+    # El período se toma del archivo (la fecha del nombre es la fuente fiable).
+    # Si no coincide con el período abierto, se bloquea con un mensaje claro
+    # en vez de archivar los datos en el mes equivocado o guardar 0 escaneos.
+    from parsers import detect_format, period_from_filename
+    period = period_from_filename(file.filename)
+    if period:
+        f_year, f_month, _f_day = period
+        if (f_year, f_month) != (year, mes):
+            raise HTTPException(
+                400,
+                f"El archivo es de {MONTHS[f_month - 1]} {f_year}, no de "
+                f"{MONTHS[mes - 1]} {year}. Abre {MONTHS[f_month - 1]} {f_year} "
+                f"para cargarlo."
+            )
+
     content = await file.read()
     raw_rows = read_excel_rows(content, file.filename)
 
     # Para Rapiscan necesitamos arrays; para otros necesitamos dicts
     # detect_format trabaja con ambos
-    from parsers import detect_format
     fmt = detect_format(raw_rows)
 
     if fmt in ("standard", "tcbuen"):
@@ -305,15 +338,32 @@ async def upload_file(
 
     month_name = MONTHS[mes - 1]
     data = parse_file(rows, puerto.nombre_corto, month_name, year, mes)
+
+    # No archivar archivos vacíos para el período: avisa en lugar de guardar 0.
+    if data["total_scans"] == 0:
+        raise HTTPException(
+            400,
+            f"No se encontraron escaneos de {MONTHS[mes - 1]} {year} en este "
+            f"archivo. Verifica que el archivo y el período sean correctos."
+        )
+
     save_parsed_data(db, puerto_id, year, mes, data, file.filename)
+
+    # Totales ACUMULADOS del mes (no solo lo que aportó este archivo).
+    month_total = db.query(func.coalesce(func.sum(EscaneosDiarios.total), 0))\
+        .filter_by(puerto_id=puerto_id, year=year, mes=mes).scalar() or 0
+    month_days = db.query(EscaneosDiarios)\
+        .filter_by(puerto_id=puerto_id, year=year, mes=mes).count()
 
     return {
         "ok": True,
         "formato": data["format"],
-        "total_escaneos": data["total_scans"],
+        "total_escaneos": data["total_scans"],   # lo que aportó este archivo
         "dias_activos": data["days_active"],
         "pico_diario": data["peak_day"],
         "promedio_diario": data["avg_daily"],
+        "total_mes": month_total,                # acumulado del mes
+        "dias_mes": month_days,
     }
 
 
@@ -346,9 +396,14 @@ def get_data(puerto_id: int, year: int, mes: int, db: Session = Depends(get_db),
     archivo = db.query(ArchivosCargados)\
         .filter_by(puerto_id=puerto_id, year=year, mes=mes).first()
 
+    # daily es por día; hora y operadores se acumulan SUMANDO entre los días.
     daily  = {str(d.dia): d.total for d in diarios}
-    hourly = {str(h.hora): h.total for h in horarios}
-    operators = {o.nombre: o.total for o in ops}
+    hourly = {}
+    for h in horarios:
+        hourly[str(h.hora)] = hourly.get(str(h.hora), 0) + h.total
+    operators = {}
+    for o in ops:
+        operators[o.nombre] = operators.get(o.nombre, 0) + o.total
 
     total     = sum(d.total for d in diarios)
     days      = len(diarios)
