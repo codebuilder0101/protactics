@@ -1328,19 +1328,34 @@ function animNum(id, target) {
 }
 
 function renderBar(d) {
-  const days=Object.keys(d.daily).map(Number).sort((a,b)=>a-b);
-  const vals=days.map(dd=>d.daily[dd]);
-  const mx=Math.max(...vals);
+  // Mostrar TODOS los días del mes en el eje X y pintar barra solo donde hay
+  // datos. Así, aunque solo haya un día cargado, se ve claramente que es un
+  // gráfico "por día del mes" y la barra no se estira a todo el ancho.
+  const daysInMonth = (selYear != null && selMonth != null)
+    ? new Date(selYear, selMonth + 1, 0).getDate()
+    : Math.max(1, ...Object.keys(d.daily).map(Number));
+
+  const labels = [], vals = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    labels.push(String(day));
+    vals.push(d.daily[day] || 0);
+  }
+  const mx = Math.max(...vals, 1);
+
   const ctx=document.getElementById('dailyChart').getContext('2d');
   if(chartDaily) chartDaily.destroy();
   chartDaily=new Chart(ctx,{
     type:'bar',
     data:{
-      labels:days.map(dd=>`${dd}`),
+      labels,
       datasets:[{
         label:'Escaneos',data:vals,
-        backgroundColor:vals.map(v=>{const p=v/mx; return `rgba(0,${Math.round(100+p*129)},${Math.round(80+p*175)},${0.35+p*0.55})`;} ),
-        borderColor:'rgba(0,229,255,0.4)',borderWidth:1,borderRadius:3
+        backgroundColor:vals.map(v=>{
+          if(!v) return 'rgba(0,229,255,0.04)';   // día sin datos: casi invisible
+          const p=v/mx; return `rgba(0,${Math.round(100+p*129)},${Math.round(80+p*175)},${0.35+p*0.55})`;
+        }),
+        borderColor:'rgba(0,229,255,0.4)',borderWidth:1,borderRadius:3,
+        maxBarThickness:34         // evita la barra gigante cuando hay pocos días
       }]
     },
     options:{
@@ -1349,10 +1364,12 @@ function renderBar(d) {
         backgroundColor:'#0b1120',borderColor:'#1a2d4a',borderWidth:1,
         titleColor:'#00e5ff',bodyColor:'#c8d8e8',
         titleFont:{family:"'IBM Plex Mono'",size:10},
+        filter:i=>i.raw>0,                         // solo días con escaneos
         callbacks:{title:i=>`Día ${i[0].label}`,label:i=>` ${i.raw} escaneos`}
       }},
       scales:{
-        x:{grid:{color:'#0d1e33'},ticks:{color:'#4a6580',font:{family:"'IBM Plex Mono'",size:9}}},
+        x:{grid:{color:'#0d1e33'},ticks:{color:'#4a6580',font:{family:"'IBM Plex Mono'",size:9},
+           autoSkip:true,maxRotation:0,minRotation:0}},
         y:{grid:{color:'#0d1e33'},ticks:{color:'#4a6580',font:{family:"'IBM Plex Mono'",size:9}},beginAtZero:true}
       }
     }
