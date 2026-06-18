@@ -104,6 +104,18 @@ input.invalid{border-color:var(--danger);}
 <div class="back"><a href="/">← Volver al inicio</a></div>
 
 <script>
+// Sitio privado: oculta el enlace de registro si está deshabilitado.
+fetch('/api/config')
+  .then(r => r.ok ? r.json() : null)
+  .then(c => {
+    if (c && c.registration_enabled) return;
+    document.querySelectorAll('a[href="/register"]')
+      .forEach(e => { (e.closest('.alt') || e).style.display = 'none'; });
+  })
+  .catch(()=>{});
+</script>
+
+<script>
 const form = document.getElementById('loginForm');
 const emailEl = document.getElementById('email');
 const passEl  = document.getElementById('password');

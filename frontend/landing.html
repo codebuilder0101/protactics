@@ -246,6 +246,16 @@ fetch('/api/auth/me', {credentials:'include'})
       '<a class="btn btn-primary" href="/dashboard">Ir al panel →</a>';
   })
   .catch(()=>{});
+
+// Sitio privado: oculta los botones de registro si está deshabilitado.
+fetch('/api/config')
+  .then(r => r.ok ? r.json() : null)
+  .then(c => {
+    if (c && c.registration_enabled) return;
+    document.querySelectorAll('a[href="/register"]')
+      .forEach(e => { (e.closest('.alt') || e).style.display = 'none'; });
+  })
+  .catch(()=>{});
 </script>
 </body>
 </html>

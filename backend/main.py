@@ -44,6 +44,10 @@ app.add_middleware(
 
 app.include_router(auth_router)
 
+# Registro público de cuentas. Deshabilitado por defecto (sitio privado).
+# Para reactivarlo: define la variable de entorno REGISTRATION_ENABLED=true.
+REGISTRATION_ENABLED = os.getenv("REGISTRATION_ENABLED", "false").lower() in ("1", "true", "yes")
+
 
 @app.on_event("startup")
 def startup():
@@ -83,6 +87,8 @@ def login_page(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/register")
 def register_page(request: Request, db: Session = Depends(get_db)):
+    if not REGISTRATION_ENABLED:
+        return RedirectResponse("/login", status_code=302)
     if user_from_token(db, request.cookies.get(COOKIE_NAME)):
         return RedirectResponse("/dashboard", status_code=302)
     return _page("register.html")
@@ -113,6 +119,13 @@ def approvals_page(request: Request, db: Session = Depends(get_db)):
     if user.role != ROLE_ADMIN:
         return RedirectResponse("/dashboard", status_code=302)
     return _page("approvals.html")
+
+
+# ── Configuración pública del frontend ─────────────────────
+@app.get("/api/config")
+def get_config():
+    """Flags que el frontend consulta (p. ej. si el registro está habilitado)."""
+    return {"registration_enabled": REGISTRATION_ENABLED}
 
 
 # ── Lista pública de puertos (solo nombres) para el registro ─

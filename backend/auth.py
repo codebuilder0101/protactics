@@ -25,6 +25,8 @@ from models import User, UserSession, Puerto
 COOKIE_NAME    = "protactics_session"
 SESSION_DAYS   = 7
 SECURE_COOKIES = os.getenv("SECURE_COOKIES", "false").lower() in ("1", "true", "yes")
+# Registro público de cuentas. Deshabilitado por defecto (sitio privado).
+REGISTRATION_ENABLED = os.getenv("REGISTRATION_ENABLED", "false").lower() in ("1", "true", "yes")
 MIN_PASSWORD   = 8
 MAX_PASSWORD   = 72          # límite de bytes de bcrypt
 EMAIL_RE       = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -180,6 +182,8 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
 # ── Endpoints ──────────────────────────────────────────────
 @router.post("/register")
 def register(body: RegisterIn, response: Response, db: Session = Depends(get_db)):
+    if not REGISTRATION_ENABLED:
+        raise HTTPException(403, "El registro de cuentas está deshabilitado")
     email = _normalize_email(body.email)
     password = body.password or ""
 
