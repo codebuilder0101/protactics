@@ -5,10 +5,8 @@ Soporta:
   • ISO  2026-04-06 23:56:00
   • DD/MM/YYYY  01/03/2026 05:02:18 a. m.
 
-Algunos reportes vienen en formato AÑO-DÍA-MES (p. ej. SPB exporta
-"2026-04-06" para el 4 de junio). Como el mes lo elige el usuario al subir el
-archivo, usamos ese mes (filter_month) para resolver la ambigüedad: si el mes
-leído no coincide pero el día sí coincide con el mes elegido, se intercambian.
+La fecha se lee de forma LITERAL: no se aplica ninguna corrección de orden
+día/mes ni filtrado por período. El valor se interpreta tal como viene.
 """
 import re
 from datetime import datetime, timedelta
@@ -42,20 +40,11 @@ def period_from_filename(filename: str):
     return y, month, day
 
 
-def _invert(year, month, day, hour, filter_month):
-    """Corrige el orden DÍA/MES en formatos ISO ambiguos (AÑO-DÍA-MES)."""
-    if filter_month and month != filter_month and day == filter_month and 1 <= month <= 12:
-        month, day = day, month
-    return year, month, day, hour
-
-
-def to_ymdh(raw, filter_month=None):
+def to_ymdh(raw):
     """Devuelve (año, mes, día, hora) o (None, None, None, None).
 
-    Aplica la corrección DÍA/MES (inversión) a todas las fuentes, porque algunos
-    exportadores guardan la fecha con el día y el mes intercambiados (el 4 de
-    junio queda como datetime(2026, 4, 6) = 6 de abril). El mes elegido al subir
-    el archivo resuelve la ambigüedad.
+    Lee la fecha de forma LITERAL: no aplica ninguna corrección de orden
+    día/mes ni filtra por período. El valor se interpreta tal como viene.
     """
     if raw is None or isinstance(raw, bool):
         return None, None, None, None
@@ -64,12 +53,12 @@ def to_ymdh(raw, filter_month=None):
     if isinstance(raw, (int, float)):
         try:
             dt = datetime(1899, 12, 30) + timedelta(days=float(raw))
-            return _invert(dt.year, dt.month, dt.day, dt.hour, filter_month)
+            return dt.year, dt.month, dt.day, dt.hour
         except Exception:
             return None, None, None, None
 
     if isinstance(raw, datetime):
-        return _invert(raw.year, raw.month, raw.day, raw.hour, filter_month)
+        return raw.year, raw.month, raw.day, raw.hour
 
     s = str(raw).strip()
     if not s or s.lower() in ("nan", "none", "nat", "total", "date"):
@@ -77,7 +66,7 @@ def to_ymdh(raw, filter_month=None):
 
     m = _ISO_DT.search(s)
     if m:
-        return _invert(int(m[1]), int(m[2]), int(m[3]), int(m[4]), filter_month)
+        return int(m[1]), int(m[2]), int(m[3]), int(m[4])
 
     md = _ISO_D.search(s)
     if md:
@@ -85,7 +74,7 @@ def to_ymdh(raw, filter_month=None):
         hm = _HM.search(s[md.end():])
         if hm:
             h = int(hm[1])
-        return _invert(int(md[1]), int(md[2]), int(md[3]), h, filter_month)
+        return int(md[1]), int(md[2]), int(md[3]), h
 
     dm = _DMY.search(s)
     if dm:
@@ -98,7 +87,7 @@ def to_ymdh(raw, filter_month=None):
                 h += 12
             if re.search(r"a\.?\s?m", s, re.I) and h == 12:
                 h = 0
-        return _invert(y, mo, d, h, filter_month)
+        return y, mo, d, h
 
     return None, None, None, None
 

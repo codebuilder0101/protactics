@@ -14,17 +14,64 @@ def _row_tokens(row):
     return toks
 
 
+WORKFLOW_COL   = "Estado de flujo de trabajo"
+NUMERIC_STATUS = ("100", "102")
+
+
+def _cells(row):
+    return list(row) if isinstance(row, (list, tuple)) else list(row.values())
+
+
+def _is_numeric_status(value) -> bool:
+    """True si el valor es un estado numérico de TCBUEN (100/102, admite .0)."""
+    if value is None or isinstance(value, bool):
+        return False
+    s = str(value).strip()
+    return bool(s) and s.split(".")[0] in NUMERIC_STATUS
+
+
+def _workflow_has_numeric_status(rows) -> bool:
+    """Distingue TCBUEN de Miniatura/Standard cuando ambos traen la columna
+    'Estado de flujo de trabajo'. TCBUEN usa estados numéricos (100/102);
+    Miniatura usa texto ('Completado'), así que devuelve False para ese caso."""
+    if rows and isinstance(rows[0], dict):
+        return any(_is_numeric_status(r.get(WORKFLOW_COL)) for r in rows)
+
+    # Filas tipo lista: ubicar la columna por el encabezado y muestrear valores.
+    col = header_row = None
+    for i, row in enumerate(rows[:60]):
+        for j, v in enumerate(_cells(row)):
+            if WORKFLOW_COL in str(v):
+                col, header_row = j, i
+                break
+        if col is not None:
+            break
+    if col is None:
+        return False
+    for row in rows[header_row + 1: header_row + 2001]:
+        cells = _cells(row)
+        if col < len(cells) and _is_numeric_status(cells[col]):
+            return True
+    return False
+
+
 def detect_format(rows: list) -> str:
     if not rows:
         return "standard"
 
-    # Funciona con filas tipo lista o tipo dict (mira las primeras 60).
+    # Rapiscan: reportes de escaneo individual. La columna de fecha puede venir
+    # como "Scan Date & Time" (export clásico) o como "Escaneos Individuales".
     for row in rows[:60]:
         flat = " ".join(_row_tokens(row))
-        if any(kw in flat for kw in ("Scan Date", "Total Inspected", "Cargo Inspection")):
+        if any(kw in flat for kw in ("Scan Date", "Total Inspected",
+                                     "Cargo Inspection", "Escaneos Individuales")):
             return "rapiscan"
-        if "Estado de flujo de trabajo" in flat:
-            return "tcbuen"
+
+    # TCBUEN vs Standard/Miniatura: comparten encabezados (incluida la columna
+    # 'Estado de flujo de trabajo'). Lo que los distingue es el VALOR de esa
+    # columna: TCBUEN trae estados numéricos (100/102); Miniatura trae texto.
+    if any(WORKFLOW_COL in " ".join(_row_tokens(row)) for row in rows[:60]):
+        return "tcbuen" if _workflow_has_numeric_status(rows) else "standard"
 
     return "standard"
 

@@ -129,21 +129,62 @@ MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
 
 
 # ── HELPERS ────────────────────────────────────────────────
+# Marcadores de columnas que solo aparecen en la hoja de DETALLE (escaneos fila
+# a fila). Sirven para elegir esa hoja en libros con varias hojas (p. ej. una de
+# detalle "Imágenes de Escaneo" y otra de resumen "Estadísticas de Escaneo").
+DETAIL_SHEET_MARKERS = (
+    "Fecha de creaci", "Scan Date", "Escaneos Individuales", "Miniatura",
+    "ID del Contenedor", "User Name", "Nombre de Usuario",
+    "Estado de flujo de trabajo",
+)
+
+
+def _sheet_score(rows: list) -> int:
+    """Cuenta marcadores de hoja de detalle en las primeras filas."""
+    score = 0
+    for row in rows[:26]:
+        for c in row:
+            if c is not None:
+                s = str(c)
+                score += sum(1 for m in DETAIL_SHEET_MARKERS if m in s)
+    return score
+
+
 def read_excel_rows(content: bytes, filename: str) -> list:
-    """Lee XLS o XLSX y retorna lista de dicts o lista de listas (header:1)."""
+    """Lee XLS o XLSX y retorna lista de listas (header:1).
+
+    Si el libro tiene varias hojas, elige la hoja de DETALLE (escaneos fila a
+    fila) en lugar de una hoja de resumen, comparando marcadores de columnas
+    conocidas. Para libros de una sola hoja el comportamiento no cambia.
+    """
     if filename.lower().endswith(".xls"):
         book = xlrd.open_workbook(file_contents=content)
-        sheet = book.sheet_by_index(0)
-        rows = []
-        for i in range(sheet.nrows):
-            rows.append(sheet.row_values(i))
-        return rows
+        best, best_score = book.sheet_by_index(0), -1
+        for sh in book.sheets():
+            head = [sh.row_values(i) for i in range(min(sh.nrows, 26))]
+            score = _sheet_score(head)
+            if score > best_score:
+                best, best_score = sh, score
+        return [best.row_values(i) for i in range(best.nrows)]
     else:
+        # 1ª pasada: puntuar las cabeceras de cada hoja (barata, ~26 filas).
         wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-        ws = wb.active
-        rows = []
-        for row in ws.iter_rows(values_only=True):
-            rows.append(list(row))
+        scores = {}
+        for ws in wb.worksheets:
+            head = []
+            for i, row in enumerate(ws.iter_rows(values_only=True)):
+                head.append(list(row))
+                if i >= 25:
+                    break
+            scores[ws.title] = _sheet_score(head)
+        wb.close()
+        best_title = max(scores, key=scores.get) if scores else None
+
+        # 2ª pasada: leer completa la hoja elegida.
+        wb2 = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        ws = wb2[best_title] if best_title is not None else wb2.active
+        rows = [list(row) for row in ws.iter_rows(values_only=True)]
+        wb2.close()
         return rows
 
 
@@ -309,26 +350,12 @@ async def upload_file(
     if not puerto:
         raise HTTPException(404, "Puerto no encontrado")
 
-    # El período se toma del archivo (la fecha del nombre es la fuente fiable).
-    # Si no coincide con el período abierto, se bloquea con un mensaje claro
-    # en vez de archivar los datos en el mes equivocado o guardar 0 escaneos.
-    from parsers import detect_format, period_from_filename
-    period = period_from_filename(file.filename)
-    if period:
-        f_year, f_month, _f_day = period
-        if (f_year, f_month) != (year, mes):
-            raise HTTPException(
-                400,
-                f"El archivo es de {MONTHS[f_month - 1]} {f_year}, no de "
-                f"{MONTHS[mes - 1]} {year}. Abre {MONTHS[f_month - 1]} {f_year} "
-                f"para cargarlo."
-            )
-
     content = await file.read()
     raw_rows = read_excel_rows(content, file.filename)
 
-    # Para Rapiscan necesitamos arrays; para otros necesitamos dicts
-    # detect_format trabaja con ambos
+    # Detección de formato (trabaja con arrays o dicts). El período YA NO se
+    # valida contra el archivo: los datos se guardan en el mes seleccionado.
+    from parsers import detect_format
     fmt = detect_format(raw_rows)
 
     if fmt in ("standard", "tcbuen"):

@@ -27,11 +27,7 @@ def parse(rows: list, port_name: str, month_name: str,
 
     buckets = DayBuckets()
     for r in scans:
-        y, mo, day, hour = to_ymdh(r.get("Fecha de creación"), filter_month)
-        if filter_year and y and y != filter_year:
-            continue
-        if filter_month and mo and mo != filter_month:
-            continue
+        y, mo, day, hour = to_ymdh(r.get("Fecha de creación"))
         op = _clean_operator(r.get("Nombre de Usuario"))
         buckets.add(day, hour, op)
 
