@@ -71,3 +71,33 @@ def test_detect_port_ambiguo_devuelve_none(client):
     b = standard_xlsx(["2026-06-10 09:00"])
     name = "reporte generico.xlsx"
     assert detect_port(_rows(b, name), name, PUERTOS_SEED) is None
+
+
+# ── Desambiguación de escáner (Antioquia E1 vs E2) ──────────
+def test_enruta_antioquia_escaner_1_y_2_por_separado(client):
+    # Ambos archivos comparten el token 'antioquia'; solo el nº de escáner del
+    # nombre los distingue. Deben ir a puertos DISTINTOS (3 = E1, 4 = E2).
+    b = standard_xlsx(["2026-06-10 09:00"])
+    n1 = "REPORTE16062026ESCANER1PTOANTIOQUIA.xlsx"
+    n2 = "REPORTE16062026ESCANER2PTOANTIOQUIA.xlsx"
+    d1 = route_file(_rows(b, n1), n1, PUERTOS_SEED)
+    d2 = route_file(_rows(b, n2), n2, PUERTOS_SEED)
+    assert (d1["puerto_id"], d1["confidence"]) == (3, "high")
+    assert (d2["puerto_id"], d2["confidence"]) == (4, "high")
+
+
+def test_enruta_antioquia_escaner_p1(client):
+    # Variante de nombre "...ESCANERP1PTO..." (la 'p' antes del dígito).
+    b = standard_xlsx(["2026-06-10 09:00"])
+    name = "REPORTE16062026ESCANERP1PTOANTIOQUIA.xlsx"
+    assert detect_port(_rows(b, name), name, PUERTOS_SEED) == 3
+
+
+# ── Alias/abreviatura de puerto (SPB → SPR Buenaventura) ────
+def test_enruta_spb_a_buenaventura(client):
+    # "SPB" (Sociedad Portuaria de Buenaventura) es abreviatura, no coincide con el
+    # nombre oficial "SPR Buenaventura"; aun así debe enrutarse al puerto 0.
+    b = standard_xlsx(["2026-06-10 09:00"])
+    name = "REPORTE16062026ESCANERPTOSPB.xlsx"
+    d = route_file(_rows(b, name), name, PUERTOS_SEED)
+    assert (d["puerto_id"], d["confidence"]) == (0, "high")

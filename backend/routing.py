@@ -25,6 +25,15 @@ _STOP = {"puerto", "puertos", "soc", "sociedad", "portuaria", "regional",
          "terminal", "de", "del", "la", "el", "industrial", "contenedores",
          "escaner", "pto", "sa", "s", "y", "con"}
 
+# Abreviaturas/alias conocidos que NO se derivan del nombre oficial del puerto.
+# Clave = nombre_corto (identificador estable); valor = tokens que, si aparecen en
+# el nombre de archivo o el contenido, son señal fuerte de ese puerto. Ej.: los
+# reportes de Buenaventura llegan como "...ESCANERPTOSPB.xlsx" (Sociedad Portuaria
+# de Buenaventura), abreviatura que no coincide con el oficial "SPR Buenaventura".
+_PORT_ALIASES = {
+    "SPR Buenaventura": ("spb", "sprbun", "spbun"),
+}
+
 
 def _norm(s) -> str:
     """minúsculas, sin acentos, no-alfanumérico → espacios."""
@@ -35,6 +44,20 @@ def _norm(s) -> str:
 
 def _tokens(s) -> list:
     return [t for t in _norm(s).split() if t and t not in _STOP]
+
+
+def _scanner_num(text) -> str:
+    """Dígito de escáner ('1', '2', ...) que el texto señala sin ambigüedad, o None.
+
+    Desempata puertos que solo difieren en el nº de escáner (p. ej. Pto. Antioquia
+    E1 vs E2). Reconoce el número tanto en nombres de archivo concatenados
+    ("...ESCANER1PTO...", "...ESCANERP1PTO...") como en nombres de puerto
+    ("Escáner 1", "E1"). Se restringe a la cercanía de 'escaner'/'e' para no
+    confundirse con dígitos de la fecha del nombre (p. ej. "16062026").
+    """
+    t = _norm(text)
+    m = re.search(r"escaner\s*p?\s*(\d)", t) or re.search(r"\be(\d)\b", t)
+    return m.group(1) if m else None
 
 
 def _content_blob(raw_rows, limit_rows: int = 30) -> str:
@@ -55,6 +78,7 @@ def _score_ports(blob_tokens: set, puertos, fname_norm: str = "") -> list:
     del nombre de archivo normalizado. Esto cubre nombres concatenados sin
     separadores, p. ej. "REPORTE...ESCANERPTOTCBUEN.xlsx" contiene "tcbuen".
     """
+    file_scanner = _scanner_num(fname_norm)
     scored = []
     for p in puertos:
         pid = getattr(p, "id", None) if not isinstance(p, dict) else p.get("id")
@@ -67,6 +91,16 @@ def _score_ports(blob_tokens: set, puertos, fname_norm: str = "") -> list:
                 score += 1
             elif fname_norm and len(t) >= 4 and t in fname_norm:
                 score += 1
+        # Abreviaturas conocidas (p. ej. "SPB" → SPR Buenaventura): señal fuerte.
+        for alias in _PORT_ALIASES.get(corto, ()):
+            if alias in fname_norm or alias in blob_tokens:
+                score += 2
+                break
+        # Número de escáner: desempata puertos que solo difieren en E1/E2. Suma
+        # solo cuando el archivo Y el puerto traen el MISMO dígito.
+        port_scanner = _scanner_num(f"{corto} {largo}")
+        if file_scanner and port_scanner and file_scanner == port_scanner:
+            score += 2
         scored.append({"id": pid, "nombre_corto": corto, "score": score,
                        "tokens": sorted(port_tokens)})
     scored.sort(key=lambda x: x["score"], reverse=True)
