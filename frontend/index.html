@@ -1033,19 +1033,23 @@ function processMonthFile(file, portId, year, monthIdx, opts={}) {
   const reader = new FileReader();
   reader.onload = async e => {
     try {
-      const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
-      // Parseo local inmediato (también sirve en modo offline).
-      portStore[portId][year][monthIdx] = parseData(rows, PORTS[portId].short, MONTHS[monthIdx], year, monthIdx+1);
-      // Persistir en PostgreSQL vía backend.
+      // Persistir PRIMERO: el backend valida que el archivo corresponda al mes.
+      // Si rechaza (mes equivocado), no tocamos el estado local.
       const res = await uploadToAPI(file, portId, year, monthIdx);
-      // Si se guardó, releer desde la BD para que la UI refleje lo persistido.
-      if (res) await loadDashFromAPI(portId, year, monthIdx + 1);
+      if (res) {
+        // Releer desde la BD para reflejar lo realmente persistido.
+        await loadDashFromAPI(portId, year, monthIdx + 1);
+      } else {
+        // Modo offline (USE_API=false): parseo local.
+        const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+        portStore[portId][year][monthIdx] = parseData(rows, PORTS[portId].short, MONTHS[monthIdx], year, monthIdx+1);
+      }
       buildPortList();
       await openMonths(portId);
       if (opts.openAfter) setTimeout(()=>openDashboard(portId,year,monthIdx),150);
-    } catch(err){ alert('No se pudo guardar en la base de datos: '+err.message); }
+    } catch(err){ alert('⚠ ' + err.message); }
   };
   reader.readAsArrayBuffer(file);
 }

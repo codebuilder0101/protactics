@@ -105,6 +105,19 @@ def _extract_periods(raw_rows, fmt) -> list:
     return out
 
 
+def detect_period(raw_rows) -> tuple:
+    """Período DOMINANTE del archivo: (año, mes, nº de filas con fecha).
+
+    Devuelve (None, None, 0) si no se pudo leer ninguna fecha. Sirve para validar
+    que un archivo corresponde al mes en que se intenta cargarlo.
+    """
+    periods = _extract_periods(raw_rows, detect_format(raw_rows))
+    if not periods:
+        return None, None, 0
+    (y, m), _ = Counter(periods).most_common(1)[0]
+    return y, m, len(periods)
+
+
 def route_file(raw_rows, filename, puertos) -> dict:
     """Resuelve (puerto_id, year, mes) de un archivo. Función pura y testeable.
 

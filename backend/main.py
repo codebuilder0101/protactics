@@ -21,7 +21,7 @@ from database import get_db, init_db, SessionLocal
 from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
                     Operadores, Disponibilidad, ArchivosCargados, User, AuditLog)
 from parsers import parse_file, detect_format
-from routing import route_file
+from routing import route_file, detect_period
 from audit import record_audit, verify_chain
 from auth import (router as auth_router, get_current_user, require_admin,
                   user_from_token, COOKIE_NAME, can_view_port, can_upload_port,
@@ -417,7 +417,19 @@ async def upload_file(
 
     content = await file.read()
     raw_rows = read_excel_rows(content, file.filename)
-    # El período YA NO se valida contra el archivo: se guarda en el mes elegido.
+
+    # Validación de período: en una carga DIRIGIDA a un mes concreto (botón o
+    # arrastrar-y-soltar sobre la tarjeta), el archivo debe corresponder a ese
+    # mes. Si su período dominante es otro, se rechaza con un error claro en vez
+    # de archivar los datos en el mes equivocado.
+    det_y, det_m, _ = detect_period(raw_rows)
+    if det_y is not None and (det_y, det_m) != (year, mes):
+        raise HTTPException(
+            400,
+            f"El archivo contiene datos de {MONTHS[det_m - 1]} {det_y}, no de "
+            f"{MONTHS[mes - 1]} {year}. Suéltalo sobre la tarjeta del mes correcto."
+        )
+
     result = process_upload(db, puerto, year, mes, raw_rows, file.filename)
 
     record_audit(accion="upload", entidad="escaneos",
