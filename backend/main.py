@@ -19,11 +19,11 @@ from sqlalchemy.orm import Session
 
 from database import get_db, init_db, SessionLocal
 from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
-                    Operadores, Disponibilidad, ArchivosCargados, User)
+                    Operadores, Disponibilidad, ArchivosCargados, User, AuditLog)
 from parsers import parse_file, detect_format
 from routing import route_file
-from audit import record_audit
-from auth import (router as auth_router, get_current_user,
+from audit import record_audit, verify_chain
+from auth import (router as auth_router, get_current_user, require_admin,
                   user_from_token, COOKIE_NAME, can_view_port, can_upload_port,
                   allowed_port_ids, ROLE_ADMIN, seed_demo_users)
 
@@ -649,3 +649,34 @@ def get_disponibilidad(puerto_id: int, db: Session = Depends(get_db),
         "mes_nombre": MONTHS[d.mes - 1],
         "valor": d.valor
     } for d in items]
+
+
+# ── AUDITORÍA (solo admin) ──────────────────────────────────
+@app.get("/api/audit/verify")
+def audit_verify(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Verifica la integridad de la cadena hash de la pista de auditoría.
+
+    Devuelve {"ok": true, "count": n} si nadie alteró la pista, o
+    {"ok": false, "broken_at": id, "count": n} si detecta manipulación.
+    """
+    return verify_chain(db)
+
+
+@app.get("/api/audit")
+def audit_list(limit: int = 100, offset: int = 0,
+               db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Lista los eventos de auditoría más recientes (solo lectura, solo admin)."""
+    limit = max(1, min(limit, 500))
+    q = db.query(AuditLog).order_by(AuditLog.id.desc()).offset(max(0, offset)).limit(limit)
+    return [{
+        "id": a.id,
+        "creado_en": a.creado_en.isoformat() if a.creado_en else None,
+        "actor_email": a.actor_email,
+        "actor_user_id": a.actor_user_id,
+        "accion": a.accion,
+        "entidad": a.entidad,
+        "entidad_id": a.entidad_id,
+        "puerto_id": a.puerto_id,
+        "detalle": a.detalle,
+        "ip": a.ip,
+    } for a in q.all()]
