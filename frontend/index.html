@@ -169,6 +169,8 @@ header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-botto
 .hero-dept{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:var(--dim);letter-spacing:.12em;margin-top:.25rem;}
 .hero-coords{font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:var(--dim);margin-top:.15rem;opacity:.7;}
 
+.months-top{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.4rem;flex-wrap:wrap;}
+.months-top .btn-back{margin:0;}
 .months-label{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:var(--dim);letter-spacing:.2em;text-transform:uppercase;margin-bottom:.9rem;}
 .months-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;}
 .mcard{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;
@@ -356,10 +358,18 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
 <!-- VIEW 2: MESES -->
 <div class="view" id="view-months">
   <div class="months-view">
-    <button class="btn-back" onclick="goTo('map')">
-      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 2L4 6l4 4"/></svg>
-      VOLVER AL MAPA
-    </button>
+    <div class="months-top">
+      <button class="btn-back" onclick="goTo('map')">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 2L4 6l4 4"/></svg>
+        VOLVER AL MAPA
+      </button>
+      <!-- Carga MÚLTIPLE: varios Excel a la vez → cada uno se enruta a SU puerto/mes. -->
+      <div class="btn-file" id="multiLoadBtn"
+           title="Selecciona varios Excel: el sistema analiza cada uno y lo guarda en su puerto y mes correctos.">
+        <input type="file" accept=".xls,.xlsx" multiple onchange="loadMultiFiles(this)">
+        ⬆ CARGA MÚLTIPLE (VARIOS PUERTOS)
+      </div>
+    </div>
     <div class="port-hero">
       <div class="hero-icon" id="heroIcon">⚓</div>
       <div>
@@ -547,8 +557,11 @@ async function loadCurrentUser(){
     }
     document.getElementById('userBox').style.display = 'flex';
 
-    // Quien no puede editar no ve el botón de carga del dashboard.
-    if (!CAN_EDIT) document.getElementById('dashUploadBtn').style.display = 'none';
+    // Quien no puede editar no ve los botones de carga (dashboard ni carga múltiple).
+    if (!CAN_EDIT) {
+      document.getElementById('dashUploadBtn').style.display = 'none';
+      document.getElementById('multiLoadBtn').style.display = 'none';
+    }
   }catch(_){ window.location.href='/login'; }
 }
 
@@ -1067,33 +1080,50 @@ function processMonthFile(file, portId, year, monthIdx, opts={}) {
   reader.readAsArrayBuffer(file);
 }
 
-// Soltar uno o varios archivos sobre la tarjeta del mes → se cargan en ESE mes.
 const _XLS_RE = /\.(xls|xlsx)$/i;
-async function handleCardDrop(card, fileList, portId, year, monthIdx) {
-  const files = [...fileList];
-  const valid = files.filter(f => _XLS_RE.test(f.name));
+const _MAX_BYTES = 15 * 1024 * 1024;
+
+// Carga MÚLTIPLE: analiza VARIOS Excel y guarda cada uno en SU puerto y mes
+// correctos (el backend enruta por contenido/nombre). Compartida por el botón
+// "Carga múltiple" y por soltar varios archivos a la vez sobre una tarjeta.
+async function bulkLoadFiles(fileList, currentPortId) {
+  const valid = [...fileList].filter(f => _XLS_RE.test(f.name));
   if (!valid.length) { alert('Solo se aceptan archivos .xls o .xlsx'); return; }
-  const tooBig = valid.filter(f => f.size > 15*1024*1024).map(f=>f.name);
+  const tooBig = valid.filter(f => f.size > _MAX_BYTES).map(f => f.name);
   if (tooBig.length) alert('Estos archivos superan 15 MB y se omiten:\n• ' + tooBig.join('\n• '));
-  const ok = valid.filter(f => f.size <= 15*1024*1024);
+  const ok = valid.filter(f => f.size <= _MAX_BYTES);
   if (!ok.length) return;
+  const rep = await apiUploadBulk(ok);             // cada archivo → su puerto/mes
+  await loadPortsFromAPI();                         // refresca TODOS los puertos
+  if (currentPortId != null) await openMonths(currentPortId);
+  showBulkSummary(rep);
+}
+
+// Botón "Carga múltiple" (cabecera de meses): elige varios Excel de cualquier
+// puerto; el sistema los analiza y los guarda en sus puertos/meses correctos.
+function loadMultiFiles(input) {
+  if (!input.files || !input.files.length) return;
+  bulkLoadFiles(input.files, selPort ? selPort.id : null)
+    .catch(err => alert('No se pudo completar la carga múltiple: ' + err.message))
+    .finally(() => { input.value = ''; });   // permite re-seleccionar los mismos archivos
+}
+
+// Soltar archivos sobre la tarjeta del mes.
+//  • UNO  → carga DIRIGIDA a esa tarjeta; el backend compara PUERTO y PERÍODO y la
+//           RECHAZA si no corresponde (no se carga nada; processMonthFile avisa).
+//  • VARIOS → enrutamiento automático: cada archivo va a SU puerto/mes correctos.
+async function handleCardDrop(card, fileList, portId, year, monthIdx) {
+  const valid = [...fileList].filter(f => _XLS_RE.test(f.name));
+  if (!valid.length) { alert('Solo se aceptan archivos .xls o .xlsx'); return; }
 
   card.classList.add('uploading');
   try {
-    // Un solo archivo → carga DIRIGIDA a esta tarjeta. El backend compara PUERTO y
-    // PERÍODO: si el archivo es de otro puerto o de otro mes, lo RECHAZA con un
-    // mensaje claro y NO se carga nada (el usuario debe soltarlo en la tarjeta
-    // correcta). processMonthFile ya muestra el error y no toca el estado local.
-    if (ok.length === 1) {
-      processMonthFile(ok[0], portId, year, monthIdx, {openAfter:true});
+    if (valid.length === 1) {
+      if (valid[0].size > _MAX_BYTES) { alert('El archivo supera 15 MB.'); return; }
+      processMonthFile(valid[0], portId, year, monthIdx, {openAfter:true});
       return;
     }
-    // Varios archivos → enrutamiento automático: cada archivo se lee y se guarda
-    // en SU puerto/mes correctos (no se fuerzan todos a esta tarjeta).
-    const rep = await apiUploadBulk(ok);
-    await loadPortsFromAPI();     // refresca totales/disponibilidad de TODOS los puertos
-    await openMonths(portId);     // re-renderiza el puerto actual
-    showBulkSummary(rep);
+    await bulkLoadFiles(valid, portId);
   } catch(err){
     alert('No se pudo completar la carga múltiple: ' + err.message);
   } finally {
