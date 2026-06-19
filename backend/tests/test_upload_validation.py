@@ -44,6 +44,17 @@ def test_rechaza_puerto_equivocado(feeder):
     assert "TCBUEN" in r.json()["detail"]
 
 
+def test_rechaza_tcbuen_en_barranquilla(client, admin):
+    # Caso reportado: arrastrar el archivo de TCBUEN (puerto 2) y soltarlo sobre la
+    # tarjeta de SPR Barranquilla (puerto 5). Debe rechazarse, no archivarse en
+    # Barranquilla. Mismo mes (junio) → el único error posible es el de puerto.
+    b = tcbuen_xlsx(["2026-06-16 10:00", "2026-06-16 11:00"])
+    name = "REPORTE16062026ESCANERPTOTCBUEN.xlsx"
+    r = client.post("/upload/5/2026/6", files={"file": (name, b, XLSX_CT)})
+    assert r.status_code == 400
+    assert "TCBUEN" in r.json()["detail"]
+
+
 def test_acepta_puerto_correcto(client, admin):
     # El mismo archivo de TCBUEN cargado en su puerto (2) y su mes (junio) → OK.
     b = tcbuen_xlsx(["2026-06-10 10:00", "2026-06-11 11:00"])
