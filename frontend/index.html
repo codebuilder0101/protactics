@@ -1080,13 +1080,12 @@ async function handleCardDrop(card, fileList, portId, year, monthIdx) {
 
   card.classList.add('uploading');
   try {
-    // Un solo archivo → carga DIRIGIDA a este puerto/mes. El backend valida que
-    // el archivo corresponda a ESTE puerto y ESTE mes. Si NO corresponde (el
-    // archivo es de otro puerto o de otro mes), en vez de descartarlo lo
-    // enrutamos automáticamente a SU puerto/mes correctos, para que el dato nunca
-    // se pierda ni quede archivado en el lugar equivocado.
+    // Un solo archivo → carga DIRIGIDA a esta tarjeta. El backend compara PUERTO y
+    // PERÍODO: si el archivo es de otro puerto o de otro mes, lo RECHAZA con un
+    // mensaje claro y NO se carga nada (el usuario debe soltarlo en la tarjeta
+    // correcta). processMonthFile ya muestra el error y no toca el estado local.
     if (ok.length === 1) {
-      await dropSingleFile(ok[0], portId, year, monthIdx);
+      processMonthFile(ok[0], portId, year, monthIdx, {openAfter:true});
       return;
     }
     // Varios archivos → enrutamiento automático: cada archivo se lee y se guarda
@@ -1099,29 +1098,6 @@ async function handleCardDrop(card, fileList, portId, year, monthIdx) {
     alert('No se pudo completar la carga múltiple: ' + err.message);
   } finally {
     card.classList.remove('uploading');
-  }
-}
-
-// Suelta UN archivo sobre la tarjeta de (puerto, mes). Primero intenta una carga
-// DIRIGIDA a esa tarjeta; el backend la rechaza si el archivo es de otro puerto o
-// de otro mes. Ante ese rechazo, NO se pierde el archivo: se re-envía por la ruta
-// de enrutamiento automático para que se guarde en SU puerto/mes correctos, y se
-// informa al usuario dónde quedó realmente.
-async function dropSingleFile(file, portId, year, monthIdx) {
-  // Modo offline (USE_API=false): no hay backend que valide → parseo local directo.
-  if (!USE_API) { processMonthFile(file, portId, year, monthIdx, {openAfter:true}); return; }
-  try {
-    await uploadToAPI(file, portId, year, monthIdx);   // lanza si el backend lo rechaza
-    await loadDashFromAPI(portId, year, monthIdx + 1);  // refleja lo realmente persistido
-    buildPortList();
-    await openMonths(portId);
-    setTimeout(()=>openDashboard(portId, year, monthIdx), 150);
-  } catch (err) {
-    // El archivo no corresponde a esta tarjeta. Enrutarlo a donde de verdad va.
-    const rep = await apiUploadBulk([file]);
-    await loadPortsFromAPI();     // refresca TODOS los puertos (pudo ir a otro)
-    await openMonths(portId);     // re-renderiza el puerto actual
-    showBulkSummary(rep);
   }
 }
 
