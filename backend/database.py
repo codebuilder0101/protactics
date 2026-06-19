@@ -1,8 +1,11 @@
 import os
+import logging
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from models import Base, Puerto
+
+log = logging.getLogger("protactics.db")
 
 
 def _resolve_database_url() -> str:
@@ -120,10 +123,52 @@ def _ensure_daily_schema():
                     conn.execute(text(f"DROP TABLE {t}"))
 
 
+def _ensure_audit_immutable():
+    """Refuerza la inmutabilidad de `auditoria` (append-only).
+
+    En PostgreSQL (producción) instala un trigger que rechaza UPDATE y DELETE, de
+    modo que ni siquiera un acceso directo por SQL puede manipular la pista. En
+    SQLite (dev/test) se omite: la garantía recae en la capa de aplicación (sin
+    rutas de update/delete) más la cadena hash, que hace detectable cualquier
+    alteración. Es idempotente (CREATE OR REPLACE / DROP IF EXISTS).
+    """
+    if engine.dialect.name != "postgresql":
+        log.info("Auditoría: motor %s (no Postgres); inmutabilidad por capa de "
+                 "aplicación + cadena hash. Trigger omitido.", engine.dialect.name)
+        return
+    ddl = """
+    CREATE OR REPLACE FUNCTION protactics_audit_immutable()
+    RETURNS trigger AS $func$
+    BEGIN
+        RAISE EXCEPTION 'auditoria es append-only: % no permitido', TG_OP;
+    END;
+    $func$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS trg_audit_immutable ON auditoria;
+    CREATE TRIGGER trg_audit_immutable
+        BEFORE UPDATE OR DELETE ON auditoria
+        FOR EACH ROW EXECUTE FUNCTION protactics_audit_immutable();
+    """
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(ddl))
+            installed = conn.execute(text(
+                "SELECT 1 FROM pg_trigger WHERE tgname='trg_audit_immutable'"
+            )).first() is not None
+        log.info("Auditoría: trigger de inmutabilidad instalado: %s",
+                 "sí" if installed else "NO")
+    except Exception as e:
+        # No bloquear el arranque si faltan permisos: la inmutabilidad de la capa
+        # de aplicación + la cadena hash siguen vigentes. Queda registrado.
+        log.error("Auditoría: no se pudo instalar el trigger de inmutabilidad "
+                  "(%s). La app sigue funcionando; revisa permisos de la BD.", e)
+
+
 def init_db():
     _ensure_user_columns()              # migrar tablas preexistentes
     _ensure_daily_schema()              # esquema por día para horas/operadores
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)   # crea tablas nuevas (alertas, sla, ...)
+    _ensure_audit_immutable()           # inmutabilidad de auditoría (solo Postgres)
     db = SessionLocal()
     try:
         for p in PUERTOS_SEED:

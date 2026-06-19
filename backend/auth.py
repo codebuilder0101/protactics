@@ -13,13 +13,14 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, Request
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import User, UserSession, Puerto
+from audit import record_audit
 
 # ── Configuración ──────────────────────────────────────────
 COOKIE_NAME    = "protactics_session"
@@ -240,18 +241,28 @@ def register(body: RegisterIn, response: Response, db: Session = Depends(get_db)
 
 
 @router.post("/login")
-def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginIn, response: Response, request: Request,
+          db: Session = Depends(get_db)):
     email = _normalize_email(body.email)
     user = db.query(User).filter_by(email=email).first()
     # Mensaje genérico — no revela si el correo existe (anti-enumeración).
     if not user or not pwd_context.verify(body.password or "", user.password_hash):
+        record_audit(accion="login_failure", entidad="auth", entidad_id=email,
+                     actor_email=email, request=request,
+                     detalle={"motivo": "credenciales inválidas"})
         raise HTTPException(401, "Credenciales inválidas")
     # Puerta de aprobación (solo se revela tras contraseña correcta).
     if user.status == STATUS_PENDING:
+        record_audit(accion="login_denied", entidad="auth", entidad_id=user.id,
+                     actor=user, request=request, detalle={"motivo": "pendiente"})
         raise HTTPException(403, "Tu cuenta está pendiente de aprobación por un administrador")
     if user.status == STATUS_REJECTED:
+        record_audit(accion="login_denied", entidad="auth", entidad_id=user.id,
+                     actor=user, request=request, detalle={"motivo": "rechazada"})
         raise HTTPException(403, "Tu solicitud de acceso fue rechazada")
     _create_session(db, user, response)
+    record_audit(accion="login_success", entidad="auth", entidad_id=user.id,
+                 actor=user, request=request)
     return _user_public(user)
 
 
@@ -346,7 +357,7 @@ def list_users(status: Optional[str] = None, db: Session = Depends(get_db),
 
 
 @router.post("/users")
-def create_user(body: UserCreate, db: Session = Depends(get_db),
+def create_user(body: UserCreate, request: Request, db: Session = Depends(get_db),
                 _admin: User = Depends(require_admin)):
     email = _normalize_email(body.email)
     password = body.password or ""
@@ -368,16 +379,22 @@ def create_user(body: UserCreate, db: Session = Depends(get_db),
     db.add(user)
     db.commit()
     db.refresh(user)
+    record_audit(accion="create_user", entidad="users", entidad_id=user.id,
+                 actor=_admin, request=request,
+                 detalle={"email": user.email, "role": user.role,
+                          "puerto_id": user.puerto_id})
     return _user_public(user)
 
 
 @router.patch("/users/{uid}")
-def update_user(uid: int, body: UserUpdate, db: Session = Depends(get_db),
+def update_user(uid: int, body: UserUpdate, request: Request,
+                db: Session = Depends(get_db),
                 admin: User = Depends(require_admin)):
     user = db.query(User).filter_by(id=uid).first()
     if not user:
         raise HTTPException(404, "Usuario no encontrado")
 
+    old_role, old_port = user.role, user.puerto_id
     new_role = body.role if body.role is not None else user.role
     # Un puerto explícito en el body manda; si no, se conserva el actual.
     new_port = body.puerto_id if body.puerto_id is not None else user.puerto_id
@@ -406,6 +423,11 @@ def update_user(uid: int, body: UserUpdate, db: Session = Depends(get_db),
 
     db.commit()
     db.refresh(user)
+    record_audit(accion="update_user", entidad="users", entidad_id=user.id,
+                 actor=admin, request=request,
+                 detalle={"role": {"antes": old_role, "despues": user.role},
+                          "puerto_id": {"antes": old_port, "despues": user.puerto_id},
+                          "password_cambiada": bool(body.password)})
     return _user_public(user)
 
 
@@ -415,12 +437,14 @@ class ApproveIn(BaseModel):
 
 
 @router.post("/users/{uid}/approve")
-def approve_user(uid: int, body: ApproveIn, db: Session = Depends(get_db),
+def approve_user(uid: int, body: ApproveIn, request: Request,
+                 db: Session = Depends(get_db),
                  admin: User = Depends(require_admin)):
     user = db.query(User).filter_by(id=uid).first()
     if not user:
         raise HTTPException(404, "Usuario no encontrado")
 
+    old_status = user.status
     # Rol final: el que confirme el admin, o el solicitado por el usuario.
     role = body.role or user.requested_role or user.role
     # El puerto enviado manda; si no, el solicitado en el registro.
@@ -434,11 +458,16 @@ def approve_user(uid: int, body: ApproveIn, db: Session = Depends(get_db),
     user.approved_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
+    record_audit(accion="approve_user", entidad="users", entidad_id=user.id,
+                 actor=admin, request=request,
+                 detalle={"status": {"antes": old_status, "despues": user.status},
+                          "role": user.role, "puerto_id": user.puerto_id,
+                          "approved_by": admin.id})
     return _user_public(user)
 
 
 @router.post("/users/{uid}/reject")
-def reject_user(uid: int, db: Session = Depends(get_db),
+def reject_user(uid: int, request: Request, db: Session = Depends(get_db),
                 admin: User = Depends(require_admin)):
     user = db.query(User).filter_by(id=uid).first()
     if not user:
@@ -450,16 +479,20 @@ def reject_user(uid: int, db: Session = Depends(get_db),
         if admins <= 1:
             raise HTTPException(400, "Debe quedar al menos un administrador")
 
+    old_status = user.status
     user.status = STATUS_REJECTED
     # Suspender corta cualquier sesión abierta del usuario.
     db.query(UserSession).filter_by(user_id=user.id).delete()
     db.commit()
     db.refresh(user)
+    record_audit(accion="reject_user", entidad="users", entidad_id=user.id,
+                 actor=admin, request=request,
+                 detalle={"status": {"antes": old_status, "despues": user.status}})
     return _user_public(user)
 
 
 @router.delete("/users/{uid}")
-def delete_user(uid: int, db: Session = Depends(get_db),
+def delete_user(uid: int, request: Request, db: Session = Depends(get_db),
                 admin: User = Depends(require_admin)):
     user = db.query(User).filter_by(id=uid).first()
     if not user:
@@ -470,6 +503,9 @@ def delete_user(uid: int, db: Session = Depends(get_db),
         admins = db.query(User).filter_by(role=ROLE_ADMIN).count()
         if admins <= 1:
             raise HTTPException(400, "Debe quedar al menos un administrador")
+    deleted = {"email": user.email, "role": user.role, "puerto_id": user.puerto_id}
     db.delete(user)
     db.commit()
+    record_audit(accion="delete_user", entidad="users", entidad_id=uid,
+                 actor=admin, request=request, detalle=deleted)
     return {"ok": True}

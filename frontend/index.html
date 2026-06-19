@@ -189,6 +189,13 @@ header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-botto
   border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:var(--dim);
   cursor:pointer;transition:all .2s;letter-spacing:.07em;}
 .mcard-upload label:hover{border-color:var(--accent);color:var(--accent);}
+.mcard.dragover{border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(0,229,255,.35),0 8px 24px rgba(0,0,0,.4);transform:translateY(-2px);}
+.mcard.dragover::after{content:'⬇ Soltar para cargar';position:absolute;inset:0;display:flex;
+  align-items:center;justify-content:center;background:rgba(5,8,15,.78);color:var(--accent);
+  font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.08em;border-radius:8px;pointer-events:none;}
+.mcard.drag-reject{border-color:var(--accent2)!important;box-shadow:0 0 0 2px rgba(255,107,53,.3);}
+.mcard.uploading{opacity:.6;pointer-events:none;}
+.mcard{position:relative;}
 
 /* ===== VIEW 3: DASHBOARD ===== */
 .dash-bar{padding:.75rem 2rem;background:rgba(0,229,255,.025);border-bottom:1px solid var(--border);
@@ -985,6 +992,27 @@ async function openMonths(portId) {
           openDashboard(portId, year, mi);
         });
       }
+
+      // Arrastrar-y-soltar: soltar un XLS sobre la tarjeta lo carga en ESE mes.
+      const uploadable = isPast && CAN_EDIT;
+      if (uploadable) {
+        card.addEventListener('dragover', e=>{ e.preventDefault();
+          e.dataTransfer.dropEffect='copy'; card.classList.add('dragover'); });
+        card.addEventListener('dragleave', e=>{
+          if(!card.contains(e.relatedTarget)) card.classList.remove('dragover'); });
+        card.addEventListener('drop', e=>{ e.preventDefault();
+          card.classList.remove('dragover');
+          if (e.dataTransfer && e.dataTransfer.files.length)
+            handleCardDrop(card, e.dataTransfer.files, portId, year, mi); });
+      } else if (!isPast) {
+        // Meses futuros: rechazar el soltado (coherente con su estado deshabilitado).
+        card.addEventListener('dragover', e=>{ e.preventDefault();
+          e.dataTransfer.dropEffect='none'; card.classList.add('drag-reject'); });
+        card.addEventListener('dragleave', e=>{ card.classList.remove('drag-reject'); });
+        card.addEventListener('drop', e=>{ e.preventDefault();
+          card.classList.remove('drag-reject');
+          alert('No se pueden cargar datos de un mes futuro.'); });
+      }
       grid.appendChild(card);
     });
   });
@@ -996,6 +1024,12 @@ async function openMonths(portId) {
 // ============================================================
 function loadMonthFile(input, portId, year, monthIdx) {
   const file = input.files[0]; if(!file) return;
+  processMonthFile(file, portId, year, monthIdx, {openAfter:true});
+}
+
+// Procesa un único archivo para un (puerto, año, mes) concretos. Compartido por
+// el botón "Cargar XLS" y por arrastrar-y-soltar sobre la tarjeta del mes.
+function processMonthFile(file, portId, year, monthIdx, opts={}) {
   const reader = new FileReader();
   reader.onload = async e => {
     try {
@@ -1010,10 +1044,41 @@ function loadMonthFile(input, portId, year, monthIdx) {
       if (res) await loadDashFromAPI(portId, year, monthIdx + 1);
       buildPortList();
       await openMonths(portId);
-      setTimeout(()=>openDashboard(portId,year,monthIdx),150);
+      if (opts.openAfter) setTimeout(()=>openDashboard(portId,year,monthIdx),150);
     } catch(err){ alert('No se pudo guardar en la base de datos: '+err.message); }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// Soltar uno o varios archivos sobre la tarjeta del mes → se cargan en ESE mes.
+const _XLS_RE = /\.(xls|xlsx)$/i;
+async function handleCardDrop(card, fileList, portId, year, monthIdx) {
+  const files = [...fileList];
+  const valid = files.filter(f => _XLS_RE.test(f.name));
+  if (!valid.length) { alert('Solo se aceptan archivos .xls o .xlsx'); return; }
+  const tooBig = valid.filter(f => f.size > 15*1024*1024).map(f=>f.name);
+  if (tooBig.length) alert('Estos archivos superan 15 MB y se omiten:\n• ' + tooBig.join('\n• '));
+  const ok = valid.filter(f => f.size <= 15*1024*1024);
+  if (!ok.length) return;
+
+  card.classList.add('uploading');
+  try {
+    // Un solo archivo → flujo normal (abre el dashboard al terminar).
+    if (ok.length === 1) {
+      processMonthFile(ok[0], portId, year, monthIdx, {openAfter:true});
+      return;
+    }
+    // Varios archivos → subir todos a este mes y refrescar una sola vez.
+    for (const file of ok) {
+      try { await uploadToAPI(file, portId, year, monthIdx); }
+      catch(err){ alert(`No se pudo cargar "${file.name}": `+err.message); }
+    }
+    await loadDashFromAPI(portId, year, monthIdx + 1);
+    buildPortList();
+    await openMonths(portId);
+  } finally {
+    card.classList.remove('uploading');
+  }
 }
 
 function loadDashFile(input) {

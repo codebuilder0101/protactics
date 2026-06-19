@@ -1,0 +1,5 @@
+# Dependencias solo para pruebas (no van a producción).
+# Instalar con: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1          # requerido por fastapi.testclient.TestClient

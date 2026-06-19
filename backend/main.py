@@ -20,7 +20,9 @@ from sqlalchemy.orm import Session
 from database import get_db, init_db, SessionLocal
 from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
                     Operadores, Disponibilidad, ArchivosCargados, User)
-from parsers import parse_file
+from parsers import parse_file, detect_format
+from routing import route_file
+from audit import record_audit
 from auth import (router as auth_router, get_current_user,
                   user_from_token, COOKIE_NAME, can_view_port, can_upload_port,
                   allowed_port_ids, ROLE_ADMIN, seed_demo_users)
@@ -48,9 +50,16 @@ app.include_router(auth_router)
 # Para reactivarlo: define la variable de entorno REGISTRATION_ENABLED=true.
 REGISTRATION_ENABLED = os.getenv("REGISTRATION_ENABLED", "false").lower() in ("1", "true", "yes")
 
+# Carga masiva: tope de archivos por lote y tamaño máximo por archivo.
+MAX_BULK_FILES = int(os.getenv("MAX_BULK_FILES", "100"))
+MAX_FILE_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))  # 15 MB
+
 
 @app.on_event("startup")
 def startup():
+    # Asegura que los logs INFO de protactics.* aparezcan en los logs de Railway.
+    import logging
+    logging.basicConfig(level=logging.INFO)
     init_db()
     # Sembrar usuarios de demostración (uno por perfil) para pruebas.
     if os.getenv("SEED_DEMO_USERS", "true").lower() in ("1", "true", "yes"):
@@ -307,6 +316,46 @@ def save_parsed_data(db: Session, puerto_id: int, year: int, mes: int,
     db.commit()
 
 
+def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
+                   raw_rows: list, filename: str) -> dict:
+    """Detecta, parsea y guarda un archivo ya leído para (puerto, year, mes).
+
+    Compartido por la carga individual y la carga masiva. NO valida permisos
+    (eso es responsabilidad de quien llama). Lanza HTTPException 400 si el archivo
+    no aporta escaneos para el período. Devuelve los totales del archivo y del mes.
+    """
+    fmt = detect_format(raw_rows)
+    rows = rows_to_dicts(raw_rows) if fmt in ("standard", "tcbuen") else raw_rows
+
+    month_name = MONTHS[mes - 1]
+    data = parse_file(rows, puerto.nombre_corto, month_name, year, mes)
+
+    if data["total_scans"] == 0:
+        raise HTTPException(
+            400,
+            f"No se encontraron escaneos de {MONTHS[mes - 1]} {year} en este "
+            f"archivo. Verifica que el archivo y el período sean correctos."
+        )
+
+    save_parsed_data(db, puerto.id, year, mes, data, filename)
+
+    month_total = db.query(func.coalesce(func.sum(EscaneosDiarios.total), 0))\
+        .filter_by(puerto_id=puerto.id, year=year, mes=mes).scalar() or 0
+    month_days = db.query(EscaneosDiarios)\
+        .filter_by(puerto_id=puerto.id, year=year, mes=mes).count()
+
+    return {
+        "ok": True,
+        "formato": data["format"],
+        "total_escaneos": data["total_scans"],   # lo que aportó este archivo
+        "dias_activos": data["days_active"],
+        "pico_diario": data["peak_day"],
+        "promedio_diario": data["avg_daily"],
+        "total_mes": month_total,                # acumulado del mes
+        "dias_mes": month_days,
+    }
+
+
 # ══════════════════════════════════════════════════════════════
 #  ENDPOINTS
 # ══════════════════════════════════════════════════════════════
@@ -353,10 +402,13 @@ def get_puertos(db: Session = Depends(get_db),
 @app.post("/upload/{puerto_id}/{year}/{mes}")
 async def upload_file(
     puerto_id: int, year: int, mes: int,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
+    if not (1 <= mes <= 12):
+        raise HTTPException(400, "Mes inválido")
     if not can_upload_port(user, puerto_id):
         raise HTTPException(403, "No tienes permiso para cargar datos en este puerto")
     puerto = db.query(Puerto).filter_by(id=puerto_id).first()
@@ -365,46 +417,100 @@ async def upload_file(
 
     content = await file.read()
     raw_rows = read_excel_rows(content, file.filename)
+    # El período YA NO se valida contra el archivo: se guarda en el mes elegido.
+    result = process_upload(db, puerto, year, mes, raw_rows, file.filename)
 
-    # Detección de formato (trabaja con arrays o dicts). El período YA NO se
-    # valida contra el archivo: los datos se guardan en el mes seleccionado.
-    from parsers import detect_format
-    fmt = detect_format(raw_rows)
+    record_audit(accion="upload", entidad="escaneos",
+                 entidad_id=f"{puerto_id}/{year}/{mes}", puerto_id=puerto_id,
+                 actor=user, request=request,
+                 detalle={"filename": file.filename, "formato": result["formato"],
+                          "total_archivo": result["total_escaneos"],
+                          "total_mes": result["total_mes"]})
+    return result
 
-    if fmt in ("standard", "tcbuen"):
-        rows = rows_to_dicts(raw_rows)
-    else:
-        rows = raw_rows
 
-    month_name = MONTHS[mes - 1]
-    data = parse_file(rows, puerto.nombre_corto, month_name, year, mes)
-
-    # No archivar archivos vacíos para el período: avisa en lugar de guardar 0.
-    if data["total_scans"] == 0:
+# ── POST /upload/bulk ───────────────────────────────────────
+@app.post("/upload/bulk")
+async def upload_bulk(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Carga masiva inteligente: hasta MAX_BULK_FILES archivos en una sola
+    petición. Cada archivo se enruta a su (puerto, año, mes) leyéndolo, y se
+    procesa de forma independiente: un archivo malo no aborta el lote. Cada
+    archivo se confirma en su propia transacción (rollback aislado en error)."""
+    if not files:
+        raise HTTPException(400, "No se recibió ningún archivo")
+    if len(files) > MAX_BULK_FILES:
         raise HTTPException(
-            400,
-            f"No se encontraron escaneos de {MONTHS[mes - 1]} {year} en este "
-            f"archivo. Verifica que el archivo y el período sean correctos."
-        )
+            413, f"Máximo {MAX_BULK_FILES} archivos por lote (recibidos {len(files)})")
 
-    save_parsed_data(db, puerto_id, year, mes, data, file.filename)
+    puertos = db.query(Puerto).order_by(Puerto.id).all()
+    by_id = {p.id: p for p in puertos}
+    results = []
+    summary = {"ok": 0, "error": 0, "needs_review": 0}
 
-    # Totales ACUMULADOS del mes (no solo lo que aportó este archivo).
-    month_total = db.query(func.coalesce(func.sum(EscaneosDiarios.total), 0))\
-        .filter_by(puerto_id=puerto_id, year=year, mes=mes).scalar() or 0
-    month_days = db.query(EscaneosDiarios)\
-        .filter_by(puerto_id=puerto_id, year=year, mes=mes).count()
+    for f in files:
+        item = {"filename": f.filename, "status": "error", "puerto_id": None,
+                "year": None, "mes": None, "total_escaneos": None, "message": None}
+        try:
+            content = await f.read()
+            if len(content) > MAX_FILE_BYTES:
+                item["message"] = f"Archivo demasiado grande (máx {MAX_FILE_BYTES // (1024*1024)} MB)"
+                summary["error"] += 1
+                results.append(item)
+                continue
 
-    return {
-        "ok": True,
-        "formato": data["format"],
-        "total_escaneos": data["total_scans"],   # lo que aportó este archivo
-        "dias_activos": data["days_active"],
-        "pico_diario": data["peak_day"],
-        "promedio_diario": data["avg_daily"],
-        "total_mes": month_total,                # acumulado del mes
-        "dias_mes": month_days,
-    }
+            raw_rows = read_excel_rows(content, f.filename)
+            decision = route_file(raw_rows, f.filename, puertos)
+            item.update(puerto_id=decision["puerto_id"], year=decision["year"],
+                        mes=decision["mes"])
+
+            # Enrutamiento dudoso → marcar para revisión, NO archivar a ciegas.
+            if decision["confidence"] != "high":
+                item["status"] = "needs_review"
+                item["message"] = decision["reason"]
+                item["routing"] = decision
+                summary["needs_review"] += 1
+                results.append(item)
+                continue
+
+            pid, yr, mo = decision["puerto_id"], decision["year"], decision["mes"]
+            if not can_upload_port(user, pid):
+                item["message"] = "No tienes permiso para cargar en este puerto"
+                summary["error"] += 1
+                results.append(item)
+                continue
+
+            puerto = by_id.get(pid)
+            res = process_upload(db, puerto, yr, mo, raw_rows, f.filename)
+            item.update(status="ok", total_escaneos=res["total_mes"],
+                        message="Cargado", routing_source=decision["period_source"])
+            if decision.get("multi_month"):
+                item["multi_month"] = decision["multi_month"]
+            summary["ok"] += 1
+            results.append(item)
+
+            record_audit(accion="upload_bulk", entidad="escaneos",
+                         entidad_id=f"{pid}/{yr}/{mo}", puerto_id=pid,
+                         actor=user, request=request,
+                         detalle={"filename": f.filename, "formato": res["formato"],
+                                  "total_mes": res["total_mes"],
+                                  "period_source": decision["period_source"]})
+        except HTTPException as e:
+            db.rollback()        # aísla el fallo a este archivo
+            item["message"] = e.detail
+            summary["error"] += 1
+            results.append(item)
+        except Exception as e:
+            db.rollback()
+            item["message"] = f"Error al procesar: {e}"
+            summary["error"] += 1
+            results.append(item)
+
+    return {"summary": summary, "total": len(files), "results": results}
 
 
 # ── GET /data/{puerto_id}/{year}/{mes} ──────────────────────
@@ -503,6 +609,7 @@ class DispUpdate(BaseModel):
 def set_disponibilidad(
     puerto_id: int, year: int, mes: int,
     body: DispUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
@@ -513,12 +620,18 @@ def set_disponibilidad(
 
     existing = db.query(Disponibilidad)\
         .filter_by(puerto_id=puerto_id, year=year, mes=mes).first()
+    valor_anterior = existing.valor if existing else None
     if existing:
         existing.valor = body.valor
         existing.actualizado = datetime.utcnow()
     else:
         db.add(Disponibilidad(puerto_id=puerto_id, year=year, mes=mes, valor=body.valor))
     db.commit()
+
+    record_audit(accion="edit_disponibilidad", entidad="disponibilidad",
+                 entidad_id=f"{puerto_id}/{year}/{mes}", puerto_id=puerto_id,
+                 actor=user, request=request,
+                 detalle={"antes": valor_anterior, "despues": body.valor})
     return {"ok": True, "puerto_id": puerto_id, "year": year, "mes": mes, "valor": body.valor}
 
 
