@@ -21,7 +21,7 @@ from database import get_db, init_db, SessionLocal
 from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
                     Operadores, Disponibilidad, ArchivosCargados, User, AuditLog)
 from parsers import parse_file, detect_format
-from routing import route_file, detect_period
+from routing import route_file, detect_period, detect_port
 from audit import record_audit, verify_chain
 from auth import (router as auth_router, get_current_user, require_admin,
                   user_from_token, COOKIE_NAME, can_view_port, can_upload_port,
@@ -418,7 +418,22 @@ async def upload_file(
     content = await file.read()
     raw_rows = read_excel_rows(content, file.filename)
 
-    # Validación de período: en una carga DIRIGIDA a un mes concreto (botón o
+    # Validación de PUERTO: en una carga DIRIGIDA, el archivo debe pertenecer al
+    # puerto elegido. Si su contenido/nombre apunta CLARAMENTE a otro puerto, se
+    # rechaza en vez de archivar los datos en el puerto equivocado. Si la
+    # detección es ambigua (None) se respeta la elección explícita del usuario.
+    todos = db.query(Puerto).all()
+    det_port = detect_port(raw_rows, file.filename, todos)
+    if det_port is not None and det_port != puerto_id:
+        otro = next((p for p in todos if p.id == det_port), None)
+        nombre_otro = otro.nombre_corto if otro else f"#{det_port}"
+        raise HTTPException(
+            400,
+            f"El archivo corresponde al puerto {nombre_otro}, no a "
+            f"{puerto.nombre_corto}. Cárgalo en la tarjeta del puerto correcto."
+        )
+
+    # Validación de PERÍODO: en una carga DIRIGIDA a un mes concreto (botón o
     # arrastrar-y-soltar sobre la tarjeta), el archivo debe corresponder a ese
     # mes. Si su período dominante es otro, se rechaza con un error claro en vez
     # de archivar los datos en el mes equivocado.

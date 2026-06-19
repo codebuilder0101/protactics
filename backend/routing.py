@@ -47,19 +47,53 @@ def _content_blob(raw_rows, limit_rows: int = 30) -> str:
     return _norm(" ".join(parts))
 
 
-def _score_ports(blob_tokens: set, puertos) -> list:
-    """Puntúa cada puerto por nº de tokens distintivos presentes en el texto."""
+def _score_ports(blob_tokens: set, puertos, fname_norm: str = "") -> list:
+    """Puntúa cada puerto por nº de tokens distintivos presentes en el texto.
+
+    Además del match por TOKEN exacto (contenido y nombre con separadores), suma
+    también los tokens distintivos (≥4 caracteres) que aparezcan como SUBCADENA
+    del nombre de archivo normalizado. Esto cubre nombres concatenados sin
+    separadores, p. ej. "REPORTE...ESCANERPTOTCBUEN.xlsx" contiene "tcbuen".
+    """
     scored = []
     for p in puertos:
         pid = getattr(p, "id", None) if not isinstance(p, dict) else p.get("id")
         corto = getattr(p, "nombre_corto", None) if not isinstance(p, dict) else p.get("nombre_corto")
         largo = getattr(p, "nombre", None) if not isinstance(p, dict) else p.get("nombre")
         port_tokens = set(_tokens(corto)) | set(_tokens(largo))
-        score = sum(1 for t in port_tokens if t in blob_tokens)
+        score = 0
+        for t in port_tokens:
+            if t in blob_tokens:
+                score += 1
+            elif fname_norm and len(t) >= 4 and t in fname_norm:
+                score += 1
         scored.append({"id": pid, "nombre_corto": corto, "score": score,
                        "tokens": sorted(port_tokens)})
     scored.sort(key=lambda x: x["score"], reverse=True)
     return scored
+
+
+def _best_port(scored: list):
+    """Mejor candidato si supera inequívocamente al segundo, o None si es ambiguo."""
+    best = scored[0] if scored else None
+    second = scored[1] if len(scored) > 1 else None
+    if best and best["score"] > 0 and (second is None or best["score"] > second["score"]):
+        return best
+    return None
+
+
+def detect_port(raw_rows, filename, puertos):
+    """ID del puerto al que pertenece el archivo (contenido + nombre), o None si es
+    ambiguo o desconocido.
+
+    Sirve para validar una carga DIRIGIDA: si el archivo pertenece CLARAMENTE a
+    otro puerto, la carga se rechaza. Devuelve None cuando no hay evidencia
+    suficiente, para no bloquear cargas legítimas con detección débil.
+    """
+    fname_norm = _norm(filename)
+    blob = set(_content_blob(raw_rows).split()) | set(fname_norm.split())
+    best = _best_port(_score_ports(blob, puertos, fname_norm))
+    return best["id"] if best else None
 
 
 def _extract_periods(raw_rows, fmt) -> list:
@@ -128,12 +162,11 @@ def route_file(raw_rows, filename, puertos) -> dict:
     fmt = detect_format(raw_rows)
 
     # ── Puerto ───────────────────────────────────────────────
-    blob = set(_content_blob(raw_rows).split()) | set(_norm(filename).split())
-    scored = _score_ports(blob, puertos)
-    best = scored[0] if scored else None
-    second = scored[1] if len(scored) > 1 else None
-    port_ok = bool(best and best["score"] > 0 and
-                   (second is None or best["score"] > second["score"]))
+    fname_norm = _norm(filename)
+    blob = set(_content_blob(raw_rows).split()) | set(fname_norm.split())
+    scored = _score_ports(blob, puertos, fname_norm)
+    best = _best_port(scored)
+    port_ok = best is not None
     puerto_id = best["id"] if port_ok else None
 
     # ── Período: nombre de archivo (preferente) → contenido ──

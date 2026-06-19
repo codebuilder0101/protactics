@@ -495,6 +495,19 @@ async function apiUpload(path, file) {
   }
   return r.json();
 }
+// Carga masiva: varios archivos en una sola petición. El backend enruta cada uno
+// a SU puerto/mes automáticamente y devuelve un resumen por archivo.
+async function apiUploadBulk(files) {
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  const r = handleAuth(await fetch(API_URL + '/upload/bulk', {method:'POST', credentials:'include', body:fd}));
+  if (!r.ok) {
+    let msg = await r.text();
+    try { const j = JSON.parse(msg); if (j.detail) msg = j.detail; } catch(_){}
+    throw new Error(msg);
+  }
+  return r.json();
+}
 
 // ── SESIÓN Y PERFIL ────────────────────────────────────────
 let CURRENT_USER = null;
@@ -1067,22 +1080,38 @@ async function handleCardDrop(card, fileList, portId, year, monthIdx) {
 
   card.classList.add('uploading');
   try {
-    // Un solo archivo → flujo normal (abre el dashboard al terminar).
+    // Un solo archivo → carga DIRIGIDA a este puerto/mes. El backend valida que
+    // el archivo corresponda a ESTE puerto y ESTE mes; si no, lo rechaza.
     if (ok.length === 1) {
       processMonthFile(ok[0], portId, year, monthIdx, {openAfter:true});
       return;
     }
-    // Varios archivos → subir todos a este mes y refrescar una sola vez.
-    for (const file of ok) {
-      try { await uploadToAPI(file, portId, year, monthIdx); }
-      catch(err){ alert(`No se pudo cargar "${file.name}": `+err.message); }
-    }
-    await loadDashFromAPI(portId, year, monthIdx + 1);
-    buildPortList();
-    await openMonths(portId);
+    // Varios archivos → enrutamiento automático: cada archivo se lee y se guarda
+    // en SU puerto/mes correctos (no se fuerzan todos a esta tarjeta).
+    const rep = await apiUploadBulk(ok);
+    await loadPortsFromAPI();     // refresca totales/disponibilidad de TODOS los puertos
+    await openMonths(portId);     // re-renderiza el puerto actual
+    showBulkSummary(rep);
+  } catch(err){
+    alert('No se pudo completar la carga múltiple: ' + err.message);
   } finally {
     card.classList.remove('uploading');
   }
+}
+
+// Resumen legible de una carga masiva: dónde quedó cada archivo y qué falló.
+function showBulkSummary(rep) {
+  const s = rep.summary || {};
+  const lines = (rep.results || []).map(r => {
+    const icon = r.status === 'ok' ? '✓' : (r.status === 'needs_review' ? '⚠' : '✗');
+    const where = (r.puerto_id != null && r.mes != null)
+      ? ` → ${PORTS[r.puerto_id]?.short || ('#' + r.puerto_id)} / ${MONTHS[r.mes - 1]} ${r.year || ''}`.trimEnd()
+      : '';
+    const tail = r.status === 'ok' ? '' : (r.message ? ` — ${r.message}` : '');
+    return `${icon} ${r.filename}${where}${tail}`;
+  });
+  alert(`Carga múltiple: ${s.ok || 0} cargados · ${s.needs_review || 0} para revisar · ${s.error || 0} con error\n\n`
+        + lines.join('\n'));
 }
 
 function loadDashFile(input) {
@@ -1091,17 +1120,25 @@ function loadDashFile(input) {
   const reader = new FileReader();
   reader.onload = async e => {
     try {
-      const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
-      let parsed = parseData(rows, selPort.short, MONTHS[selMonth], selYear, selMonth+1);
-      portStore[selPort.id][selYear][selMonth] = parsed;
-      // Persistir en PostgreSQL y releer lo guardado.
+      // Persistir PRIMERO: el backend valida puerto y mes. Si rechaza (puerto o
+      // mes equivocado), NO se toca el estado local ni se re-renderiza, así no se
+      // muestra un dato que en realidad no se guardó.
       const res = await uploadToAPI(file, selPort.id, selYear, selMonth);
-      if (res) parsed = await loadDashFromAPI(selPort.id, selYear, selMonth + 1) || parsed;
-      renderDashboard(parsed);
+      let parsed;
+      if (res) {
+        // Releer desde la BD para reflejar exactamente lo persistido.
+        parsed = await loadDashFromAPI(selPort.id, selYear, selMonth + 1);
+      } else {
+        // Modo offline (USE_API=false): parseo local.
+        const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+        parsed = parseData(rows, selPort.short, MONTHS[selMonth], selYear, selMonth+1);
+        portStore[selPort.id][selYear][selMonth] = parsed;
+      }
+      if (parsed) renderDashboard(parsed);
       buildPortList();
-    } catch(err){ alert('No se pudo guardar en la base de datos: '+err.message); }
+    } catch(err){ alert('⚠ ' + err.message); }
   };
   reader.readAsArrayBuffer(file);
 }
