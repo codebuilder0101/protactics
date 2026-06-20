@@ -1499,16 +1499,20 @@ async function openDashboard(portId, year, monthIdx) {
   if ((!data || data.placeholder) && USE_API) {
     data = await loadDashFromAPI(portId, year, monthIdx + 1);
   }
-  renderDashboard(data || demoData());
+  renderDashboard(data || emptyData());
   goTo('dashboard', portId, year, monthIdx);
 }
 
-function demoData() {
-  return {portName:'Demo (Marzo)',monthName:'Marzo',totalScans:460,daysActive:21,peakDay:147,avgDaily:22,
-    daily:{1:6,2:43,3:51,4:103,5:147,6:69,14:3,15:1,16:1,17:4,18:3,19:2,21:1,22:1,23:1,24:1,25:4,26:10,27:2,28:5,31:2},
-    hourly:{0:13,1:12,2:20,3:18,4:22,5:20,6:6,7:6,8:19,9:16,10:22,11:24,12:23,13:19,14:32,15:26,16:21,17:29,18:33,19:13,20:19,21:21,22:14,23:12},
-    operators:{'Luis_AH':117,'Carlos_EV':112,'John_Zapata':102,'Leider_UrregoD':98,'Humberto_Paz':21,'Rapiscan':10},
-    operatorCount:6};
+// Estado VACÍO real para un mes sin datos cargados. Antes se mostraban datos de
+// demostración, lo que hacía parecer que había información aunque la base de datos
+// estuviera vacía. Ahora un mes sin datos se ve vacío y rotulado como "Sin datos".
+function emptyData() {
+  return {
+    portName: selPort ? selPort.short : '',
+    monthName: (selMonth != null ? MONTHS[selMonth] : '') + (selYear != null ? ' ' + selYear : ''),
+    totalScans: 0, daysActive: 0, peakDay: 0, avgDaily: 0,
+    daily: {}, hourly: {}, operators: {}, operatorCount: 0, empty: true,
+  };
 }
 
 function renderDashboard(d) {
@@ -1632,7 +1636,9 @@ function renderTable(d) {
       <td class="num">${d.daysActive}</td>
       <td class="num">${d.peakDay.toLocaleString('es-CO')}</td>
       <td class="num">${d.operatorCount}</td>
-      <td style="color:var(--accent3)">● CARGADO</td>
+      ${d.empty || d.totalScans === 0
+        ? '<td style="color:var(--dim)">● SIN DATOS</td>'
+        : '<td style="color:var(--accent3)">● CARGADO</td>'}
     </tr>`;
 }
 
