@@ -84,7 +84,11 @@ def _score_ports(blob_tokens: set, puertos, fname_norm: str = "") -> list:
         pid = getattr(p, "id", None) if not isinstance(p, dict) else p.get("id")
         corto = getattr(p, "nombre_corto", None) if not isinstance(p, dict) else p.get("nombre_corto")
         largo = getattr(p, "nombre", None) if not isinstance(p, dict) else p.get("nombre")
-        port_tokens = set(_tokens(corto)) | set(_tokens(largo))
+        # Se descartan los tokens puramente numéricos (p. ej. el "1"/"2" de
+        # "Escáner 1"/"Escáner 2"): no son distintivos y harían coincidir cualquier
+        # archivo cuyo contenido tenga un "1" o "2" suelto. El nº de escáner se
+        # resuelve aparte con _scanner_num.
+        port_tokens = {t for t in (set(_tokens(corto)) | set(_tokens(largo))) if not t.isdigit()}
         score = 0
         for t in port_tokens:
             if t in blob_tokens:

@@ -79,6 +79,11 @@ def to_ymdh(raw):
     dm = _DMY.search(s)
     if dm:
         d, mo, y = int(dm[1]), int(dm[2]), int(dm[3])
+        # Formato M/D/Y (EE. UU.), p. ej. "6/16/2026": el día y el mes vienen
+        # intercambiados. Si el "mes" es > 12 y el "día" es válido como mes, se
+        # corrige. Los casos ambiguos (ambos ≤ 12) se dejan como D/M/Y.
+        if mo > 12 and d <= 12:
+            d, mo = mo, d
         h = 0
         hm = _HM.search(s)
         if hm:

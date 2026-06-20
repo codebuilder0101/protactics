@@ -101,3 +101,15 @@ def test_enruta_spb_a_buenaventura(client):
     name = "REPORTE16062026ESCANERPTOSPB.xlsx"
     d = route_file(_rows(b, name), name, PUERTOS_SEED)
     assert (d["puerto_id"], d["confidence"]) == (0, "high")
+
+
+def test_digitos_sueltos_no_provocan_match_falso_de_antioquia(client):
+    # Un archivo de OTRO puerto cuyo contenido trae "1"/"2" sueltos (filas,
+    # totales, etc.) NO debe empatar con Antioquia E1/E2 por esos dígitos. Antes,
+    # el token numérico de "Escáner 1/2" hacía ambiguo el puerto y no se cargaba.
+    rows = [["Fecha de creación", "Nombre de Usuario", "N", "Estado"],
+            ["2026-06-16 10:00", "Ana", "1", "Completado"],
+            ["2026-06-16 11:00", "Ana", "2", "Completado"]]
+    name = "REPORTE16062026ESCANERPTOBARRANQUILLA.xlsx"
+    d = route_file(rows, name, PUERTOS_SEED)
+    assert (d["puerto_id"], d["confidence"]) == (5, "high")
