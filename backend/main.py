@@ -13,6 +13,7 @@ import xlrd
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -72,6 +73,18 @@ def startup():
 
 # ── Frontend (páginas) ─────────────────────────────────────
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+
+# Recursos estáticos del frontend (favicon, imágenes, etc.) bajo /assets
+app.mount(
+    "/assets",
+    StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")),
+    name="assets",
+)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(os.path.join(FRONTEND_DIR, "assets", "favicon.png"))
 
 
 def _page(name: str) -> FileResponse:
