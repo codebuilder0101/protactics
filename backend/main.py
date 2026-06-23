@@ -408,10 +408,17 @@ def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
 def get_puertos(year: Optional[int] = None,
                 db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
-    # Año en curso para los agregados de la lista del mapa (meses, escaneos y
-    # disponibilidad promedio del año). Se puede sobrescribir con ?year=.
+    # Año en curso para los agregados de la lista del mapa (meses y escaneos
+    # del año). Se puede sobrescribir con ?year=.
     if year is None:
         year = datetime.utcnow().year
+    # Mes ANTERIOR al actual: la lista lateral muestra su disponibilidad.
+    # En enero, el mes anterior es diciembre del año previo.
+    now = datetime.utcnow()
+    if now.month > 1:
+        prev_y, prev_m = now.year, now.month - 1
+    else:
+        prev_y, prev_m = now.year - 1, 12
     q = db.query(Puerto).order_by(Puerto.id)
     ids = allowed_port_ids(user)        # None = todos
     if ids is not None:
@@ -434,12 +441,10 @@ def get_puertos(year: Optional[int] = None,
         # Meses cargados: número de meses del año con un archivo cargado.
         meses_year = db.query(ArchivosCargados)\
             .filter_by(puerto_id=p.id, year=year).count()
-        # Disponibilidad promedio: media de los valores registrados del año.
-        disp_vals = [v for (v,) in db.query(Disponibilidad.valor).filter(
-            Disponibilidad.puerto_id == p.id,
-            Disponibilidad.year == year,
-            Disponibilidad.valor.isnot(None)).all()]
-        disp_prom_year = round(sum(disp_vals) / len(disp_vals), 1) if disp_vals else None
+        # Disponibilidad del MES ANTERIOR (lo que muestra la lista lateral).
+        disp_prev = db.query(Disponibilidad)\
+            .filter_by(puerto_id=p.id, year=prev_y, mes=prev_m).first()
+        disp_prev_val = disp_prev.valor if (disp_prev and disp_prev.valor is not None) else None
 
         # Disponibilidad más reciente
         last_avail = db.query(Disponibilidad)\
@@ -454,7 +459,10 @@ def get_puertos(year: Optional[int] = None,
             "year_actual": year,
             "escaneos_year": int(escaneos_year),
             "meses_year": meses_year,
-            "disponibilidad_promedio_year": disp_prom_year,
+            "mes_anterior": prev_m,
+            "year_anterior": prev_y,
+            "mes_anterior_nombre": MONTHS[prev_m - 1],
+            "disponibilidad_mes_anterior": disp_prev_val,
             "ultima_disponibilidad": {
                 "valor": last_avail.valor,
                 "mes": last_avail.mes,

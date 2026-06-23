@@ -709,12 +709,12 @@ async function loadPortsFromAPI() {
     // El backend ya devuelve solo los puertos que este perfil puede ver.
     ALLOWED_IDS = puertos.map(p => p.id);
     puertos.forEach(p => {
-      if (typeof p.year_actual === 'number') statsYear = p.year_actual;
-      // Agregados del año en curso para la lista lateral del mapa.
+      // Agregados para la lista lateral del mapa: meses/escaneos del año y
+      // disponibilidad del mes anterior.
       portYearStats[p.id] = {
         meses: p.meses_year || 0,
         escaneos: p.escaneos_year || 0,
-        dispProm: p.disponibilidad_promedio_year ?? null,
+        dispPrev: p.disponibilidad_mes_anterior ?? null,
       };
       if (p.ultima_disponibilidad) {
         const d = p.ultima_disponibilidad;
@@ -812,17 +812,22 @@ const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
 const YEARS  = [2023, 2024, 2025, 2026];
 const COLORS = ['#00e5ff','#ff6b35','#39ff14','#ffd700','#b44fff','#ff2d78','#00bfff'];
 
-// Año en curso: la lista lateral del mapa muestra los agregados de ESTE año.
+// Año en curso: la lista lateral del mapa muestra los agregados de ESTE año
+// (meses y escaneos), y la disponibilidad del MES ANTERIOR.
 const CURRENT_YEAR = new Date().getFullYear();
-// Año efectivo de los agregados (lo confirma el backend en /puertos).
-let statsYear = CURRENT_YEAR;
+// Mes anterior al actual. En enero, es diciembre del año previo.
+const _NOW = new Date();
+const PREV_MONTH_IDX   = _NOW.getMonth() === 0 ? 11 : _NOW.getMonth() - 1;
+const PREV_MONTH_YEAR  = _NOW.getMonth() === 0 ? CURRENT_YEAR - 1 : CURRENT_YEAR;
+const PREV_MONTH_LABEL = MONTHS[PREV_MONTH_IDX].toUpperCase() + ' ' + PREV_MONTH_YEAR;
 
 // portStore[portId][year][monthIdx] = parsed | null
 const portStore = {};
 PORTS.forEach(p => { portStore[p.id] = {}; YEARS.forEach(y => portStore[p.id][y] = Array(12).fill(null)); });
 
-// Agregados del año en curso por puerto (vienen del backend):
-// portYearStats[portId] = {meses, escaneos, dispProm}
+// Agregados por puerto (vienen del backend):
+// portYearStats[portId] = {meses, escaneos, dispPrev}
+//   meses/escaneos → del año en curso; dispPrev → disponibilidad del mes anterior.
 const portYearStats = {};
 
 let selPort = null, selYear = CURRENT_YEAR, selMonth = null;
@@ -928,22 +933,19 @@ function saveAvail(portId, year, mi, val) {
   updateSidebarAvail(portId);
 }
 
-// Promedio de disponibilidad del año (omite meses sin valor). null si ninguno.
-function yearAvgAvail(portId, year) {
-  const arr = portAvail[portId]?.[year] || [];
-  const vals = arr.filter(v => v !== null && v !== undefined);
-  if (!vals.length) return null;
-  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10;
+// Disponibilidad del MES ANTERIOR para un puerto (null si no hay valor).
+function prevMonthAvail(portId) {
+  return portAvail[portId]?.[PREV_MONTH_YEAR]?.[PREV_MONTH_IDX] ?? null;
 }
 
 function updateSidebarAvail(portId) {
-  // La lista lateral muestra el PROMEDIO del año en curso. Tras editar un mes,
-  // se recalcula desde portAvail (que ya está cargado para el puerto abierto).
-  const avg = yearAvgAvail(portId, statsYear);
-  if (portYearStats[portId]) portYearStats[portId].dispProm = avg;
-  const col   = getDispColor(avg);
-  const pct   = avg != null ? avg : 0;
-  const has   = avg != null;
+  // La lista lateral muestra la disponibilidad del MES ANTERIOR. Tras editar
+  // ese mes, se recalcula desde portAvail (cargado para el puerto abierto).
+  const val   = prevMonthAvail(portId);
+  if (portYearStats[portId]) portYearStats[portId].dispPrev = val;
+  const col   = getDispColor(val);
+  const pct   = val != null ? val : 0;
+  const has   = val != null;
 
   const sbar  = document.getElementById(`sidebar-fill-${portId}`);
   const slbl  = document.getElementById(`sidebar-lbl-${portId}`);
@@ -952,10 +954,10 @@ function updateSidebarAvail(portId) {
   const sbox  = document.getElementById(`sidebar-box-${portId}`);
 
   if (sbar) { sbar.style.width = pct + '%'; sbar.style.background = col; }
-  if (slbl) slbl.textContent = 'DISPONIBILIDAD PROMEDIO · ' + statsYear;
+  if (slbl) slbl.textContent = 'DISPONIBILIDAD · ' + PREV_MONTH_LABEL;
   if (sval) {
     if (has) {
-      sval.textContent = avg.toFixed(1);
+      sval.textContent = val.toFixed(1);
       sval.style.cssText = `color:${col};font-family:'Bebas Neue',sans-serif;font-size:1.1rem;display:inline-block;width:36px;text-align:right`;
     } else {
       sval.textContent = 'Sin datos';
@@ -1104,15 +1106,14 @@ function buildPortList() {
   const list = document.getElementById('portsList');
   list.innerHTML = '';
   visiblePorts().forEach(port => {
-    // Agregados del AÑO en curso: meses cargados, escaneos del año y
-    // disponibilidad PROMEDIO del año (no la del último mes).
-    const st      = portYearStats[port.id] || {meses:0, escaneos:0, dispProm:null};
-    const total   = st.escaneos;
-    const mths    = st.meses;
-    const avgDisp = st.dispProm;
-    const col     = getDispColor(avgDisp);
-    const pct     = avgDisp != null ? avgDisp : 0;
-    const latest  = avgDisp != null ? {v: avgDisp} : null;
+    // Meses y escaneos del AÑO en curso; disponibilidad del MES ANTERIOR.
+    const st       = portYearStats[port.id] || {meses:0, escaneos:0, dispPrev:null};
+    const total    = st.escaneos;
+    const mths     = st.meses;
+    const prevDisp = st.dispPrev;
+    const col      = getDispColor(prevDisp);
+    const pct      = prevDisp != null ? prevDisp : 0;
+    const latest   = prevDisp != null ? {v: prevDisp} : null;
 
     const card = document.createElement('div');
     card.className = 'pcard'; card.id = 'pcard-'+port.id;
@@ -1124,7 +1125,7 @@ function buildPortList() {
         <div><span class="pstat-val">${total?total.toLocaleString('es-CO'):'—'}</span><span class="pstat-lbl">ESCANEOS</span></div>
       </div>
       <div class="pcard-disp">
-        <span class="disp-lbl" id="sidebar-lbl-${port.id}">DISPONIBILIDAD PROMEDIO · ${statsYear}</span>
+        <span class="disp-lbl" id="sidebar-lbl-${port.id}">DISPONIBILIDAD · ${PREV_MONTH_LABEL}</span>
         <div class="disp-row">
           <div class="disp-bar-track">
             <div class="disp-bar-fill" id="sidebar-fill-${port.id}"
