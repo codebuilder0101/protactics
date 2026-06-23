@@ -138,6 +138,60 @@ select:disabled{opacity:.4;cursor:not-allowed;}
       </tbody>
     </table>
   </div>
+
+  <!-- Metas de SLA -->
+  <div class="panel">
+    <div class="panel-title">Metas de SLA por puerto</div>
+    <div style="display:flex;align-items:end;gap:.7rem;margin-bottom:1.2rem;flex-wrap:wrap">
+      <div>
+        <label style="display:block;font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:.3rem">Meta global por defecto (%)</label>
+        <input id="sla-global" type="number" min="0" max="100" step="0.1" style="width:120px">
+      </div>
+      <button class="btn-sm btn-save" onclick="saveGlobalSLA()">Guardar global</button>
+      <span class="u-id">Aplica a todo puerto que no tenga una meta propia.</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Puerto</th><th>Meta efectiva</th><th>Origen</th><th>Fijar meta propia (%)</th><th style="text-align:right">Acción</th>
+      </tr></thead>
+      <tbody id="slaBody"><tr><td colspan="5" class="empty">Cargando…</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Ventanas de mantenimiento -->
+  <div class="panel">
+    <div class="panel-title">Ventanas de mantenimiento / inactividad técnica</div>
+    <div class="page-sub" style="margin-bottom:1rem">Los días marcados se EXCLUYEN de la detección de anomalías y del cálculo de SLA (no generan alertas ni cuentan contra la meta).</div>
+    <div class="form-grid" style="grid-template-columns:1.3fr 1fr 1fr 1fr 1.5fr auto;margin-bottom:1.2rem">
+      <div><label>Puerto</label><select id="m-port" onchange="loadVentanas()"></select></div>
+      <div><label>Tipo</label><select id="m-tipo">
+        <option value="programado">Programado</option>
+        <option value="falla_tecnica">Falla técnica</option>
+      </select></div>
+      <div><label>Desde</label><input id="m-ini" type="date"></div>
+      <div><label>Hasta (opcional)</label><input id="m-fin" type="date"></div>
+      <div><label>Motivo</label><input id="m-motivo" type="text" placeholder="Opcional"></div>
+      <div><button class="btn-sm btn-save" onclick="addVentana()">Agregar</button></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Tipo</th><th>Desde</th><th>Hasta</th><th>Motivo</th><th style="text-align:right">Acción</th>
+      </tr></thead>
+      <tbody id="mantBody"><tr><td colspan="5" class="empty">Selecciona un puerto…</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Recálculo manual -->
+  <div class="panel">
+    <div class="panel-title">Recalcular alertas y SLA</div>
+    <div class="page-sub" style="margin-bottom:1rem">Tras cambiar una meta o una ventana de mantenimiento, vuelve a evaluar un período concreto para actualizar las alertas y el estado.</div>
+    <div class="form-grid" style="grid-template-columns:1.3fr 1fr 1fr auto">
+      <div><label>Puerto</label><select id="rc-port"></select></div>
+      <div><label>Año</label><input id="rc-year" type="number" value="2026" min="2020" max="2100"></div>
+      <div><label>Mes</label><select id="rc-mes"></select></div>
+      <div><button class="btn-sm btn-save" onclick="recalcular()">Recalcular</button></div>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -261,6 +315,109 @@ function syncCreatePort(){
 }
 document.getElementById('c-role').addEventListener('change', syncCreatePort);
 
+// ── Metas de SLA ────────────────────────────────────────────
+function portPlainOptions(){
+  return PUERTOS.map(p => `<option value="${p.id}">${p.nombre_corto}</option>`).join('');
+}
+
+async function loadSLA(){
+  const rows = await api('/sla');
+  const global = rows.find(r => r.puerto_id === null);
+  const gUmbral = global ? global.umbral : 95;
+  document.getElementById('sla-global').value = gUmbral;
+  const byPort = {};
+  rows.forEach(r => { if (r.puerto_id !== null) byPort[r.puerto_id] = r; });
+  document.getElementById('slaBody').innerHTML = PUERTOS.map(p => {
+    const own = byPort[p.id];
+    const efectiva = own ? own.umbral : gUmbral;
+    return `<tr data-pid="${p.id}">
+      <td class="u-email">${p.nombre_corto}</td>
+      <td>${efectiva}%</td>
+      <td><span class="u-id">${own ? 'Propia' : 'Global'}</span></td>
+      <td><input class="sla-inp" type="number" min="0" max="100" step="0.1"
+           value="${own ? own.umbral : ''}" placeholder="${gUmbral}" style="width:90px"></td>
+      <td style="text-align:right"><button class="btn-sm btn-save" onclick="savePortSLA(${p.id})">Guardar</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function saveGlobalSLA(){
+  const v = parseFloat(document.getElementById('sla-global').value);
+  if (isNaN(v) || v < 0 || v > 100){ toast('Umbral inválido (0–100)', false); return; }
+  try{ await api('/sla/global', {method:'PUT', body: JSON.stringify({umbral:v})});
+    toast('Meta global guardada'); await loadSLA(); }
+  catch(e){ toast(e.message, false); }
+}
+
+async function savePortSLA(pid){
+  const tr = document.querySelector(`tr[data-pid="${pid}"]`);
+  const v = parseFloat(tr.querySelector('.sla-inp').value);
+  if (isNaN(v) || v < 0 || v > 100){ toast('Umbral inválido (0–100)', false); return; }
+  try{ await api(`/sla/${pid}`, {method:'PUT', body: JSON.stringify({umbral:v})});
+    toast('Meta del puerto guardada'); await loadSLA(); }
+  catch(e){ toast(e.message, false); }
+}
+
+// ── Ventanas de mantenimiento ───────────────────────────────
+async function loadVentanas(){
+  const pidVal = document.getElementById('m-port').value;
+  const body = document.getElementById('mantBody');
+  if (pidVal === ''){ body.innerHTML = `<tr><td colspan="5" class="empty">Selecciona un puerto…</td></tr>`; return; }
+  const items = await api(`/mantenimiento/${Number(pidVal)}`);
+  body.innerHTML = items.length ? items.map(v => `<tr>
+      <td>${v.tipo === 'programado' ? 'Programado' : 'Falla técnica'}</td>
+      <td>${v.fecha_inicio}</td>
+      <td>${v.fecha_fin || '<span class="u-id">abierta</span>'}</td>
+      <td>${v.motivo || '—'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        ${v.abierta ? `<button class="btn-sm btn-save" onclick="cerrarVentana(${v.id})">Cerrar</button>` : ''}
+        <button class="btn-sm btn-del" onclick="delVentana(${v.id})">Eliminar</button>
+      </td></tr>`).join('')
+    : `<tr><td colspan="5" class="empty">Sin ventanas para este puerto.</td></tr>`;
+}
+
+async function addVentana(){
+  const pidVal = document.getElementById('m-port').value;
+  if (pidVal === ''){ toast('Selecciona un puerto', false); return; }
+  const tipo = document.getElementById('m-tipo').value;
+  const ini = document.getElementById('m-ini').value;
+  const fin = document.getElementById('m-fin').value || null;
+  const motivo = document.getElementById('m-motivo').value.trim() || null;
+  if (!ini){ toast('Indica la fecha de inicio', false); return; }
+  if (fin && fin < ini){ toast('La fecha de fin no puede ser anterior a la de inicio', false); return; }
+  try{ await api(`/mantenimiento/${Number(pidVal)}`, {method:'POST',
+        body: JSON.stringify({tipo, fecha_inicio:ini, fecha_fin:fin, motivo})});
+    toast('Ventana agregada');
+    document.getElementById('m-fin').value = '';
+    document.getElementById('m-motivo').value = '';
+    await loadVentanas(); }
+  catch(e){ toast(e.message, false); }
+}
+
+async function cerrarVentana(id){
+  try{ await api(`/mantenimiento/${id}`, {method:'PATCH', body: JSON.stringify({cerrar:true})});
+    toast('Ventana cerrada'); await loadVentanas(); }
+  catch(e){ toast(e.message, false); }
+}
+
+async function delVentana(id){
+  if (!confirm('¿Eliminar esta ventana de mantenimiento?')) return;
+  try{ await api(`/mantenimiento/${id}`, {method:'DELETE'});
+    toast('Ventana eliminada'); await loadVentanas(); }
+  catch(e){ toast(e.message, false); }
+}
+
+// ── Recálculo ───────────────────────────────────────────────
+async function recalcular(){
+  const pidVal = document.getElementById('rc-port').value;
+  if (pidVal === ''){ toast('Selecciona un puerto', false); return; }
+  const year = Number(document.getElementById('rc-year').value);
+  const mes = Number(document.getElementById('rc-mes').value);
+  try{ const r = await api(`/alertas/recalcular/${Number(pidVal)}/${year}/${mes}`, {method:'POST'});
+    toast(`Recalculado: ${r.alertas_abiertas} alerta(s) abierta(s)`); }
+  catch(e){ toast(e.message, false); }
+}
+
 async function init(){
   try{
     ME = await api('/api/auth/me');
@@ -268,7 +425,18 @@ async function init(){
     PUERTOS = await api('/puertos');
     document.getElementById('c-puerto').innerHTML = portOptions(null);
     syncCreatePort();
+    // Selectores de los paneles de inteligencia operacional.
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const mesOpts = MESES.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+    document.getElementById('rc-mes').innerHTML = mesOpts;
+    document.getElementById('rc-mes').value = String(new Date().getMonth()+1);
+    document.getElementById('rc-year').value = String(new Date().getFullYear());
+    const blank = `<option value="">— elegir —</option>`;
+    document.getElementById('m-port').innerHTML = blank + portPlainOptions();
+    document.getElementById('rc-port').innerHTML = blank + portPlainOptions();
     await loadUsers();
+    await loadSLA();
   }catch(e){ /* api() ya redirige en 401/403 */ }
 }
 

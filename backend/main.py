@@ -5,7 +5,7 @@ FastAPI + SQLAlchemy + PostgreSQL (SQLite para desarrollo local)
 import io
 import os
 import calendar
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 import openpyxl
@@ -20,13 +20,17 @@ from sqlalchemy.orm import Session
 
 from database import get_db, init_db, SessionLocal
 from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
-                    Operadores, Disponibilidad, ArchivosCargados, User, AuditLog)
+                    Operadores, Disponibilidad, ArchivosCargados, User, AuditLog,
+                    Alerta, SLA, Infraccion, VentanaMantenimiento)
 from parsers import parse_file, detect_format
 from routing import route_file, detect_period, detect_port
 from audit import record_audit, verify_chain
 from auth import (router as auth_router, get_current_user, require_admin,
                   user_from_token, COOKIE_NAME, can_view_port, can_upload_port,
-                  allowed_port_ids, ROLE_ADMIN, seed_demo_users)
+                  can_manage_alerts, allowed_port_ids, ROLE_ADMIN, seed_demo_users)
+import mantenimiento as mant
+import sla as sla_engine
+import anomalies
 
 # ── App ────────────────────────────────────────────────────
 app = FastAPI(title="PROTACTICS API", version="1.0.0")
@@ -329,6 +333,27 @@ def save_parsed_data(db: Session, puerto_id: int, year: int, mes: int,
     db.commit()
 
 
+import logging as _logging
+_log = _logging.getLogger("protactics.engines")
+
+
+def _run_engines(db: Session, puerto_id: int, year: int, mes: int, actor_id=None):
+    """Corre anomalías (mes) + SLA (puerto completo). Hace commit (vía SLA)."""
+    anomalies.evaluar_mes(db, puerto_id, year, mes, actor_id=actor_id)
+    sla_engine.evaluar_puerto(db, puerto_id, actor_id=actor_id)   # commit
+
+
+def _run_engines_safe(db: Session, puerto_id: int, year: int, mes: int, actor_id=None):
+    """Igual que _run_engines pero a prueba de fallos: nunca propaga la excepción
+    (los datos cargados ya están confirmados antes de llamar a esto)."""
+    try:
+        _run_engines(db, puerto_id, year, mes, actor_id=actor_id)
+    except Exception as e:
+        db.rollback()
+        _log.error("Motores de inteligencia operacional fallaron en "
+                   "puerto=%s %s/%s: %s", puerto_id, year, mes, e)
+
+
 def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
                    raw_rows: list, filename: str) -> dict:
     """Detecta, parsea y guarda un archivo ya leído para (puerto, year, mes).
@@ -351,6 +376,11 @@ def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
         )
 
     save_parsed_data(db, puerto.id, year, mes, data, filename)
+
+    # Inteligencia operacional: detectar anomalías del mes y reevaluar el SLA del
+    # puerto (racha + meses faltantes). Nunca debe romper la carga: si falla, se
+    # revierte SOLO lo del motor (los datos ya están confirmados) y se registra.
+    _run_engines_safe(db, puerto.id, year, mes)
 
     month_total = db.query(func.coalesce(func.sum(EscaneosDiarios.total), 0))\
         .filter_by(puerto_id=puerto.id, year=year, mes=mes).scalar() or 0
@@ -375,8 +405,13 @@ def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
 
 # ── GET /puertos ────────────────────────────────────────────
 @app.get("/puertos")
-def get_puertos(db: Session = Depends(get_db),
+def get_puertos(year: Optional[int] = None,
+                db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
+    # Año en curso para los agregados de la lista del mapa (meses, escaneos y
+    # disponibilidad promedio del año). Se puede sobrescribir con ?year=.
+    if year is None:
+        year = datetime.utcnow().year
     q = db.query(Puerto).order_by(Puerto.id)
     ids = allowed_port_ids(user)        # None = todos
     if ids is not None:
@@ -391,6 +426,21 @@ def get_puertos(db: Session = Depends(get_db),
         meses = db.query(EscaneosDiarios.mes, EscaneosDiarios.year)\
                   .filter_by(puerto_id=p.id)\
                   .distinct().count()
+
+        # ── Agregados del AÑO en curso (lista lateral del mapa) ──────────
+        # Escaneos: suma de todos los escaneos diarios del año.
+        escaneos_year = db.query(func.coalesce(func.sum(EscaneosDiarios.total), 0))\
+            .filter_by(puerto_id=p.id, year=year).scalar() or 0
+        # Meses cargados: número de meses del año con un archivo cargado.
+        meses_year = db.query(ArchivosCargados)\
+            .filter_by(puerto_id=p.id, year=year).count()
+        # Disponibilidad promedio: media de los valores registrados del año.
+        disp_vals = [v for (v,) in db.query(Disponibilidad.valor).filter(
+            Disponibilidad.puerto_id == p.id,
+            Disponibilidad.year == year,
+            Disponibilidad.valor.isnot(None)).all()]
+        disp_prom_year = round(sum(disp_vals) / len(disp_vals), 1) if disp_vals else None
+
         # Disponibilidad más reciente
         last_avail = db.query(Disponibilidad)\
             .filter_by(puerto_id=p.id)\
@@ -401,6 +451,10 @@ def get_puertos(db: Session = Depends(get_db),
             "departamento": p.departamento, "lat": p.lat, "lng": p.lng,
             "icono": p.icono, "sx": p.sx, "sy": p.sy, "formato": p.formato,
             "total_escaneos": total, "meses_cargados": meses,
+            "year_actual": year,
+            "escaneos_year": int(escaneos_year),
+            "meses_year": meses_year,
+            "disponibilidad_promedio_year": disp_prom_year,
             "ultima_disponibilidad": {
                 "valor": last_avail.valor,
                 "mes": last_avail.mes,
@@ -630,15 +684,24 @@ def get_meses(puerto_id: int, db: Session = Depends(get_db),
         .filter_by(puerto_id=puerto_id).all()
     disp_map = {(d.year, d.mes): d.valor for d in disponibilidades}
 
-    return [{
-        "year": a.year,
-        "mes": a.mes,
-        "mes_nombre": MONTHS[a.mes - 1],
-        "total_escaneos": a.total_escaneos,
-        "formato": a.formato,
-        "cargado_en": a.cargado_en.isoformat(),
-        "disponibilidad": disp_map.get((a.year, a.mes))
-    } for a in archivos]
+    out = []
+    for a in archivos:
+        est = sla_engine.clasificar_mes(db, puerto_id, a.year, a.mes)
+        out.append({
+            "year": a.year,
+            "mes": a.mes,
+            "mes_nombre": MONTHS[a.mes - 1],
+            "total_escaneos": a.total_escaneos,
+            "formato": a.formato,
+            "cargado_en": a.cargado_en.isoformat(),
+            "disponibilidad": disp_map.get((a.year, a.mes)),
+            "estado_sla": {
+                "estado": est["estado"], "motivo": est["motivo"],
+                "observado": est["observado"], "umbral": est["umbral"],
+                "dias_mantenimiento": est["dias_mantenimiento"],
+            },
+        })
+    return out
 
 
 # ── PUT /disponibilidad/{puerto_id}/{year}/{mes} ─────────────
@@ -720,3 +783,318 @@ def audit_list(limit: int = 100, offset: int = 0,
         "detalle": a.detalle,
         "ip": a.ip,
     } for a in q.all()]
+
+
+# ══════════════════════════════════════════════════════════════
+#  INTELIGENCIA OPERACIONAL — Mantenimiento, SLA y Alertas
+# ══════════════════════════════════════════════════════════════
+
+# ── Ventanas de mantenimiento ───────────────────────────────
+MANT_TIPOS = ("programado", "falla_tecnica")
+
+
+class MantCreate(BaseModel):
+    tipo: str
+    fecha_inicio: date
+    fecha_fin: Optional[date] = None
+    motivo: Optional[str] = None
+
+
+class MantUpdate(BaseModel):
+    tipo: Optional[str] = None
+    fecha_inicio: Optional[date] = None
+    fecha_fin: Optional[date] = None
+    motivo: Optional[str] = None
+    cerrar: Optional[bool] = None        # cerrar = fijar fecha_fin a hoy
+
+
+def _mant_public(v: VentanaMantenimiento) -> dict:
+    return {
+        "id": v.id, "puerto_id": v.puerto_id, "tipo": v.tipo,
+        "fecha_inicio": v.fecha_inicio.isoformat() if v.fecha_inicio else None,
+        "fecha_fin": v.fecha_fin.isoformat() if v.fecha_fin else None,
+        "motivo": v.motivo, "creada_por": v.creada_por,
+        "creada_en": v.creada_en.isoformat() if v.creada_en else None,
+        "cerrada_en": v.cerrada_en.isoformat() if v.cerrada_en else None,
+        "abierta": v.fecha_fin is None,
+    }
+
+
+@app.get("/mantenimiento/{puerto_id}")
+def get_mantenimiento(puerto_id: int, db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    if not can_view_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
+    items = db.query(VentanaMantenimiento).filter_by(puerto_id=puerto_id)\
+        .order_by(VentanaMantenimiento.fecha_inicio.desc()).all()
+    return [_mant_public(v) for v in items]
+
+
+@app.post("/mantenimiento/{puerto_id}")
+def create_mantenimiento(puerto_id: int, body: MantCreate, request: Request,
+                         db: Session = Depends(get_db),
+                         admin: User = Depends(require_admin)):
+    if not db.query(Puerto).filter_by(id=puerto_id).first():
+        raise HTTPException(404, "Puerto no encontrado")
+    if body.tipo not in MANT_TIPOS:
+        raise HTTPException(422, "Tipo inválido (programado | falla_tecnica)")
+    if body.fecha_fin is not None and body.fecha_fin < body.fecha_inicio:
+        raise HTTPException(422, "La fecha de fin no puede ser anterior a la de inicio")
+    v = VentanaMantenimiento(
+        puerto_id=puerto_id, tipo=body.tipo, fecha_inicio=body.fecha_inicio,
+        fecha_fin=body.fecha_fin, motivo=(body.motivo or "").strip() or None,
+        creada_por=admin.id, creada_en=datetime.utcnow(),
+        cerrada_en=datetime.utcnow() if body.fecha_fin is not None else None,
+    )
+    db.add(v)
+    db.commit()
+    db.refresh(v)
+    record_audit(accion="create_mantenimiento", entidad="mantenimiento",
+                 entidad_id=v.id, puerto_id=puerto_id, actor=admin, request=request,
+                 detalle=_mant_public(v))
+    return _mant_public(v)
+
+
+@app.patch("/mantenimiento/{vid}")
+def update_mantenimiento(vid: int, body: MantUpdate, request: Request,
+                         db: Session = Depends(get_db),
+                         admin: User = Depends(require_admin)):
+    v = db.query(VentanaMantenimiento).filter_by(id=vid).first()
+    if not v:
+        raise HTTPException(404, "Ventana no encontrada")
+    antes = _mant_public(v)
+    if body.tipo is not None:
+        if body.tipo not in MANT_TIPOS:
+            raise HTTPException(422, "Tipo inválido (programado | falla_tecnica)")
+        v.tipo = body.tipo
+    if body.fecha_inicio is not None:
+        v.fecha_inicio = body.fecha_inicio
+    if body.cerrar:
+        v.fecha_fin = date.today()
+        v.cerrada_en = datetime.utcnow()
+    elif body.fecha_fin is not None:
+        v.fecha_fin = body.fecha_fin
+        v.cerrada_en = datetime.utcnow()
+    if body.motivo is not None:
+        v.motivo = body.motivo.strip() or None
+    if v.fecha_fin is not None and v.fecha_fin < v.fecha_inicio:
+        raise HTTPException(422, "La fecha de fin no puede ser anterior a la de inicio")
+    db.commit()
+    db.refresh(v)
+    record_audit(accion="update_mantenimiento", entidad="mantenimiento",
+                 entidad_id=v.id, puerto_id=v.puerto_id, actor=admin, request=request,
+                 detalle={"antes": antes, "despues": _mant_public(v)})
+    return _mant_public(v)
+
+
+@app.delete("/mantenimiento/{vid}")
+def delete_mantenimiento(vid: int, request: Request, db: Session = Depends(get_db),
+                         admin: User = Depends(require_admin)):
+    v = db.query(VentanaMantenimiento).filter_by(id=vid).first()
+    if not v:
+        raise HTTPException(404, "Ventana no encontrada")
+    snap = _mant_public(v)
+    db.delete(v)
+    db.commit()
+    record_audit(accion="delete_mantenimiento", entidad="mantenimiento",
+                 entidad_id=vid, puerto_id=snap["puerto_id"], actor=admin,
+                 request=request, detalle=snap)
+    return {"ok": True}
+
+
+# ── Metas de SLA ────────────────────────────────────────────
+class SLAUpdate(BaseModel):
+    umbral: float
+    metrica: str = "availability"
+    periodo: str = "mensual"
+    activo: bool = True
+
+
+def _sla_public(s: SLA) -> dict:
+    return {"id": s.id, "puerto_id": s.puerto_id, "metrica": s.metrica,
+            "umbral": s.umbral, "periodo": s.periodo, "activo": s.activo}
+
+
+@app.get("/sla")
+def list_sla(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Todas las metas configuradas (incluida la global, puerto_id NULL)."""
+    return [_sla_public(s) for s in db.query(SLA).order_by(
+        SLA.puerto_id.is_(None).desc(), SLA.puerto_id).all()]
+
+
+@app.get("/sla/{puerto_id}/estado")
+def sla_estado(puerto_id: int, db: Session = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    """Meta efectiva + racha de incumplimiento del puerto (solo lectura)."""
+    if not can_view_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
+    meta = sla_engine.meta_efectiva(db, puerto_id)
+    umbral = meta.umbral if meta else sla_engine.DEFAULT_AVAILABILITY_TARGET
+    propia = meta is not None and meta.puerto_id == puerto_id
+    return {
+        "puerto_id": puerto_id,
+        "umbral": umbral,
+        "origen": "puerto" if propia else "global",
+        "racha_incumplimiento": sla_engine.racha_incumplimiento(db, puerto_id),
+        "racha_critica": sla_engine.RACHA_CRITICA,
+    }
+
+
+def _set_sla(db: Session, puerto_id, body: SLAUpdate):
+    if body.metrica not in ("availability", "upload_deadline", "min_daily_scans"):
+        raise HTTPException(422, "Métrica inválida")
+    if body.metrica == "availability" and not (0 <= body.umbral <= 100):
+        raise HTTPException(422, "El umbral de disponibilidad debe estar entre 0 y 100")
+    row = db.query(SLA).filter_by(puerto_id=puerto_id, metrica=body.metrica).first()
+    antes = _sla_public(row) if row else None
+    if row:
+        row.umbral = body.umbral
+        row.periodo = body.periodo
+        row.activo = body.activo
+    else:
+        row = SLA(puerto_id=puerto_id, metrica=body.metrica, umbral=body.umbral,
+                  periodo=body.periodo, activo=body.activo)
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row, antes
+
+
+@app.put("/sla/global")
+def set_sla_global(body: SLAUpdate, request: Request, db: Session = Depends(get_db),
+                   admin: User = Depends(require_admin)):
+    """Fija la meta por defecto global (puerto_id NULL)."""
+    row, antes = _set_sla(db, None, body)
+    record_audit(accion="edit_sla", entidad="sla", entidad_id=row.id,
+                 puerto_id=None, actor=admin, request=request,
+                 detalle={"antes": antes, "despues": _sla_public(row)})
+    return _sla_public(row)
+
+
+@app.put("/sla/{puerto_id}")
+def set_sla_puerto(puerto_id: int, body: SLAUpdate, request: Request,
+                   db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """Fija/actualiza la meta de un puerto concreto."""
+    if not db.query(Puerto).filter_by(id=puerto_id).first():
+        raise HTTPException(404, "Puerto no encontrado")
+    row, antes = _set_sla(db, puerto_id, body)
+    record_audit(accion="edit_sla", entidad="sla", entidad_id=row.id,
+                 puerto_id=puerto_id, actor=admin, request=request,
+                 detalle={"antes": antes, "despues": _sla_public(row)})
+    return _sla_public(row)
+
+
+# ── Alertas ─────────────────────────────────────────────────
+def _alerta_public(a: Alerta) -> dict:
+    return {
+        "id": a.id, "puerto_id": a.puerto_id, "tipo": a.tipo,
+        "severidad": a.severidad, "mensaje": a.mensaje, "estado": a.estado,
+        "year": a.year, "mes": a.mes, "dia": a.dia,
+        "mes_nombre": MONTHS[a.mes - 1] if a.mes else None,
+        "payload": a.payload,
+        "creada_en": a.creada_en.isoformat() if a.creada_en else None,
+        "resuelta_en": a.resuelta_en.isoformat() if a.resuelta_en else None,
+    }
+
+
+_SEV_ORDEN = {"critical": 0, "warning": 1, "info": 2}
+
+
+@app.get("/alertas")
+def list_alertas(puerto_id: Optional[int] = None, estado: Optional[str] = None,
+                 tipo: Optional[str] = None, severidad: Optional[str] = None,
+                 limit: int = 200, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    q = db.query(Alerta)
+    ids = allowed_port_ids(user)
+    if ids is not None:
+        if not ids:
+            return []
+        q = q.filter(Alerta.puerto_id.in_(ids))
+    if puerto_id is not None:
+        if not can_view_port(user, puerto_id):
+            raise HTTPException(403, "No tienes permiso para ver este puerto")
+        q = q.filter(Alerta.puerto_id == puerto_id)
+    if estado:
+        q = q.filter(Alerta.estado == estado)
+    if tipo:
+        q = q.filter(Alerta.tipo == tipo)
+    if severidad:
+        q = q.filter(Alerta.severidad == severidad)
+    rows = q.all()
+    rows.sort(key=lambda a: (_SEV_ORDEN.get(a.severidad, 9),
+                             -(a.creada_en.timestamp() if a.creada_en else 0)))
+    return [_alerta_public(a) for a in rows[:max(1, min(limit, 500))]]
+
+
+@app.get("/alertas/resumen")
+def resumen_alertas(db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    """Conteo de alertas ABIERTAS por puerto y severidad (insignias del mapa)."""
+    q = db.query(Alerta).filter(Alerta.estado.in_(("open", "acknowledged")))
+    ids = allowed_port_ids(user)
+    if ids is not None:
+        if not ids:
+            return {}
+        q = q.filter(Alerta.puerto_id.in_(ids))
+    out = {}
+    for a in q.all():
+        d = out.setdefault(a.puerto_id, {"critical": 0, "warning": 0, "info": 0})
+        d[a.severidad] = d.get(a.severidad, 0) + 1
+    return out
+
+
+def _get_alerta_mutable(aid: int, db: Session, user: User) -> Alerta:
+    a = db.query(Alerta).filter_by(id=aid).first()
+    if not a:
+        raise HTTPException(404, "Alerta no encontrada")
+    if not can_manage_alerts(user, a.puerto_id):
+        raise HTTPException(403, "No tienes permiso para gestionar alertas de este puerto")
+    return a
+
+
+@app.post("/alertas/{aid}/ack")
+def ack_alerta(aid: int, request: Request, db: Session = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    a = _get_alerta_mutable(aid, db, user)
+    if a.estado == "open":
+        a.estado = "acknowledged"
+        db.commit()
+        record_audit(accion="ack_alerta", entidad="alertas", entidad_id=a.id,
+                     puerto_id=a.puerto_id, actor=user, request=request,
+                     detalle={"tipo": a.tipo})
+    return _alerta_public(a)
+
+
+@app.post("/alertas/{aid}/resolve")
+def resolve_alerta(aid: int, request: Request, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    a = _get_alerta_mutable(aid, db, user)
+    if a.estado != "resolved":
+        a.estado = "resolved"
+        a.resuelta_en = datetime.utcnow()
+        a.resuelta_por = user.id
+        db.commit()
+        record_audit(accion="resolve_alerta", entidad="alertas", entidad_id=a.id,
+                     puerto_id=a.puerto_id, actor=user, request=request,
+                     detalle={"tipo": a.tipo})
+    return _alerta_public(a)
+
+
+@app.post("/alertas/recalcular/{puerto_id}/{year}/{mes}")
+def recalcular(puerto_id: int, year: int, mes: int, request: Request,
+               db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """Reejecuta anomalías (mes) + SLA (puerto) tras cambiar metas o mantenimiento."""
+    if not (1 <= mes <= 12):
+        raise HTTPException(400, "Mes inválido")
+    if not db.query(Puerto).filter_by(id=puerto_id).first():
+        raise HTTPException(404, "Puerto no encontrado")
+    _run_engines(db, puerto_id, year, mes, actor_id=admin.id)
+    record_audit(accion="recalcular_alertas", entidad="alertas",
+                 entidad_id=f"{puerto_id}/{year}/{mes}", puerto_id=puerto_id,
+                 actor=admin, request=request)
+    abiertas = db.query(Alerta).filter(
+        Alerta.puerto_id == puerto_id, Alerta.estado.in_(("open", "acknowledged"))
+    ).count()
+    return {"ok": True, "puerto_id": puerto_id, "year": year, "mes": mes,
+            "alertas_abiertas": abiertas}

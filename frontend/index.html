@@ -120,6 +120,44 @@ header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-botto
 }
 .map-pin:hover .pin-tooltip{opacity:1;}
 
+/* Insignia de alertas en el pin */
+.pin-badge{position:absolute;top:-9px;left:9px;min-width:15px;height:15px;padding:0 3px;
+  border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:.55rem;font-weight:700;
+  color:#02151b;display:flex;align-items:center;justify-content:center;z-index:13;
+  border:1px solid rgba(0,0,0,.35);box-shadow:0 1px 4px rgba(0,0,0,.4);}
+
+/* Estado de SLA auditable */
+.sla-chip{display:inline-block;margin-top:.4rem;padding:.16rem .5rem;border-radius:3px;
+  font-family:'IBM Plex Mono',monospace;font-size:.5rem;letter-spacing:.1em;font-weight:600;
+  color:var(--c);border:1px solid var(--c);background:rgba(0,0,0,.25);}
+.sla-chip-lg{display:inline-block;padding:.25rem .7rem;border-radius:4px;
+  font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.12em;font-weight:700;
+  color:var(--c);border:1px solid var(--c);background:rgba(0,0,0,.25);}
+.sla-state{display:flex;flex-direction:column;gap:.5rem;margin-bottom:.9rem;}
+.sla-state-row{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;font-size:.72rem;}
+.sla-streak{font-family:'IBM Plex Mono',monospace;font-size:.68rem;letter-spacing:.05em;font-weight:600;}
+.dim{color:var(--dim);}
+
+/* Lista de alertas en el dashboard */
+.alert-list{display:flex;flex-direction:column;gap:.5rem;}
+.alert-empty{color:var(--accent3);font-size:.72rem;font-family:'IBM Plex Mono',monospace;padding:.4rem 0;}
+.alert-item{display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--dim);
+  border-radius:5px;padding:.6rem .85rem;}
+.alert-main{min-width:0;}
+.alert-msg{font-size:.74rem;color:var(--text);line-height:1.35;}
+.alert-meta{font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:var(--dim);
+  letter-spacing:.08em;margin-top:.25rem;text-transform:uppercase;}
+.alert-ack{font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:var(--accent4);
+  border:1px solid rgba(255,215,0,.4);border-radius:3px;padding:.05rem .3rem;margin-left:.4rem;}
+.alert-actions{display:flex;gap:.4rem;flex-shrink:0;}
+.alert-btn{background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.3);color:var(--accent);
+  font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:.06em;padding:.3rem .6rem;
+  border-radius:4px;cursor:pointer;text-transform:uppercase;transition:all .15s;}
+.alert-btn:hover{background:rgba(0,229,255,.16);}
+.alert-btn.resolve{background:rgba(57,255,20,.06);border-color:rgba(57,255,20,.3);color:var(--accent3);}
+.alert-btn.resolve:hover{background:rgba(57,255,20,.14);}
+
 /* Sidebar */
 .map-sidebar{background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
 .sidebar-head{padding:1.2rem 1.4rem;border-bottom:1px solid var(--border);
@@ -173,6 +211,16 @@ header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-botto
 .months-top{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.4rem;flex-wrap:wrap;}
 .months-top .btn-back{margin:0;}
 .months-label{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:var(--dim);letter-spacing:.2em;text-transform:uppercase;margin-bottom:.9rem;}
+.months-bar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.9rem;flex-wrap:wrap;}
+.year-select{display:flex;align-items:center;gap:.5rem;}
+.year-select label{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);}
+.year-select select{background:#060b15;border:1px solid var(--border);border-radius:6px;padding:.4rem 1.6rem .4rem .7rem;
+  color:var(--accent);font-family:'IBM Plex Mono',monospace;font-size:.78rem;letter-spacing:.08em;cursor:pointer;
+  transition:all .15s;appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2300e5ff' stroke-width='1.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right .6rem center;}
+.year-select select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,229,255,.12);}
+.year-select select:hover{border-color:var(--accent);}
 .months-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;}
 .mcard{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;
   cursor:pointer;transition:all .22s;position:relative;overflow:hidden;text-align:center;}
@@ -406,7 +454,13 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
         <div class="hero-coords" id="heroCoords">—</div>
       </div>
     </div>
-    <div class="months-label">▸ Seleccione un mes para abrir el dashboard</div>
+    <div class="months-bar">
+      <div class="months-label" style="margin-bottom:0">▸ Seleccione un mes para abrir el dashboard</div>
+      <div class="year-select">
+        <label for="yearSelect">AÑO</label>
+        <select id="yearSelect" onchange="onYearChange(this.value)"></select>
+      </div>
+    </div>
     <div class="months-grid" id="monthsGrid"></div>
   </div>
 </div>
@@ -459,6 +513,12 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
           <div class="disp-bar-fill" id="kpi-avail-bar" style="width:0%"></div>
         </div>
       </div>
+    </div>
+
+    <div class="panel" id="slaPanel" style="margin-bottom:1rem;display:none">
+      <div class="panel-title">Estado de SLA y Alertas Operacionales</div>
+      <div id="slaState" class="sla-state"></div>
+      <div id="alertList" class="alert-list"></div>
     </div>
 
     <div class="panel" style="margin-bottom:1rem">
@@ -521,6 +581,18 @@ async function apiPut(path, body) {
     credentials:'include', body: JSON.stringify(body)
   }));
   if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function apiPost(path, body) {
+  const r = handleAuth(await fetch(API_URL + path, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    credentials:'include', body: body ? JSON.stringify(body) : null
+  }));
+  if (!r.ok) {
+    let msg = await r.text();
+    try { const j = JSON.parse(msg); if (j.detail) msg = j.detail; } catch(_){}
+    throw new Error(msg);
+  }
   return r.json();
 }
 async function apiUpload(path, file) {
@@ -620,9 +692,16 @@ async function loadPortsFromAPI() {
     // El backend ya devuelve solo los puertos que este perfil puede ver.
     ALLOWED_IDS = puertos.map(p => p.id);
     puertos.forEach(p => {
+      if (typeof p.year_actual === 'number') statsYear = p.year_actual;
+      // Agregados del año en curso para la lista lateral del mapa.
+      portYearStats[p.id] = {
+        meses: p.meses_year || 0,
+        escaneos: p.escaneos_year || 0,
+        dispProm: p.disponibilidad_promedio_year ?? null,
+      };
       if (p.ultima_disponibilidad) {
         const d = p.ultima_disponibilidad;
-        portAvail[p.id][d.year][d.mes - 1] = d.valor;
+        if (portAvail[p.id]?.[d.year]) portAvail[p.id][d.year][d.mes - 1] = d.valor;
       }
     });
     // Perfil con alcance y sin puerto asignado → aviso de cuenta pendiente.
@@ -646,6 +725,8 @@ async function loadMesesFromAPI(portId) {
         portStore[portId][m.year][m.mes-1] = {placeholder:true, totalScans:m.total_escaneos};
       if (m.disponibilidad != null)
         portAvail[portId][m.year][m.mes-1] = m.disponibilidad;
+      if (m.estado_sla)
+        monthSLA[portId][m.year][m.mes-1] = m.estado_sla;
     });
   } catch(e) { console.warn('Error meses API:', e.message); }
 }
@@ -711,14 +792,25 @@ const PORTS = [
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                 'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const YEARS  = [2025, 2026];
+const YEARS  = [2023, 2024, 2025, 2026];
 const COLORS = ['#00e5ff','#ff6b35','#39ff14','#ffd700','#b44fff','#ff2d78','#00bfff'];
+
+// Año en curso: la lista lateral del mapa muestra los agregados de ESTE año.
+const CURRENT_YEAR = new Date().getFullYear();
+// Año efectivo de los agregados (lo confirma el backend en /puertos).
+let statsYear = CURRENT_YEAR;
 
 // portStore[portId][year][monthIdx] = parsed | null
 const portStore = {};
 PORTS.forEach(p => { portStore[p.id] = {}; YEARS.forEach(y => portStore[p.id][y] = Array(12).fill(null)); });
 
-let selPort = null, selYear = 2026, selMonth = null;
+// Agregados del año en curso por puerto (vienen del backend):
+// portYearStats[portId] = {meses, escaneos, dispProm}
+const portYearStats = {};
+
+let selPort = null, selYear = CURRENT_YEAR, selMonth = null;
+// Año seleccionado en la vista de MESES (combo de año). Por defecto, el actual.
+let monthsYear = YEARS.includes(CURRENT_YEAR) ? CURRENT_YEAR : YEARS[YEARS.length - 1];
 let chartDaily = null;
 
 // Disponibilidad manual: portAvail[portId][year][monthIdx] = número 0-100
@@ -732,6 +824,65 @@ function getDispColor(val) {
   if (n >= 95) return '#39ff14';   // 95-100% → verde
   if (n >= 90) return '#ffd700';   // 90-94%  → amarillo
   return '#ff4444';                // < 90%   → rojo
+}
+
+// ============================================================
+//  ESTADO DE SLA AUDITABLE  (reemplaza el semáforo de umbrales fijos)
+//  El color/etiqueta viene del backend (meta configurada + infracciones),
+//  no de constantes del front. Cada estado es trazable a su motivo.
+// ============================================================
+const SLA_VIS = {
+  CUMPLE:           {color:'#39ff14', label:'CUMPLE'},
+  EN_RIESGO:        {color:'#ffd700', label:'EN RIESGO'},
+  INCUMPLE:         {color:'#ff4444', label:'INCUMPLE'},
+  EN_MANTENIMIENTO: {color:'#4aa3ff', label:'MANTENIMIENTO'},
+  SIN_DATOS:        {color:'#4a6580', label:'SIN DATOS'},
+};
+function slaVis(estado){ return SLA_VIS[estado] || SLA_VIS.SIN_DATOS; }
+function slaTitle(s){
+  if (!s) return '';
+  let t = s.motivo || '';
+  if (s.observado != null && s.umbral != null)
+    t += ` (observado ${s.observado}% · meta ${s.umbral}%)`;
+  if (s.dias_mantenimiento) t += ` · ${s.dias_mantenimiento} día(s) en mantenimiento`;
+  return t;
+}
+
+// Estado de SLA por mes: monthSLA[portId][year][monthIdx] = {estado,motivo,observado,umbral,...}
+const monthSLA = {};
+PORTS.forEach(p => { monthSLA[p.id] = {}; YEARS.forEach(y => monthSLA[p.id][y] = Array(12).fill(null)); });
+
+// Resumen de alertas abiertas por puerto: {portId: {critical,warning,info}}
+let ALERTS_SUMMARY = {};
+async function loadAlertsResumen(){
+  if (!USE_API) return;
+  try { ALERTS_SUMMARY = await apiGet('/alertas/resumen') || {}; }
+  catch(e){ ALERTS_SUMMARY = {}; }
+}
+function alertCount(portId){
+  const s = ALERTS_SUMMARY[portId] || ALERTS_SUMMARY[String(portId)];
+  if (!s) return {total:0, critical:0, warning:0, info:0};
+  const critical = s.critical||0, warning = s.warning||0, info = s.info||0;
+  return {total: critical+warning+info, critical, warning, info};
+}
+function alertColor(c){ return c.critical ? '#ff4444' : c.warning ? '#ffd700' : '#4aa3ff'; }
+// Actualiza las insignias de TODOS los pines del mapa sin reconstruirlo.
+function updateAllPinBadges(){
+  visiblePorts().forEach(port => {
+    const pin = document.getElementById('mpin-'+port.id);
+    if (!pin) return;
+    const ac = alertCount(port.id);
+    let b = pin.querySelector('.pin-badge');
+    const tip = pin.querySelector('.pin-tooltip');
+    if (ac.total){
+      if (!b){ b = document.createElement('div'); b.className = 'pin-badge'; pin.appendChild(b); }
+      b.textContent = ac.total; b.style.background = alertColor(ac);
+      if (tip) tip.textContent = `${port.short.toUpperCase()} · ${ac.total} alerta(s)`;
+    } else {
+      if (b) b.remove();
+      if (tip) tip.textContent = port.short.toUpperCase();
+    }
+  });
 }
 
 function saveAvail(portId, year, mi, val) {
@@ -760,10 +911,22 @@ function saveAvail(portId, year, mi, val) {
   updateSidebarAvail(portId);
 }
 
+// Promedio de disponibilidad del año (omite meses sin valor). null si ninguno.
+function yearAvgAvail(portId, year) {
+  const arr = portAvail[portId]?.[year] || [];
+  const vals = arr.filter(v => v !== null && v !== undefined);
+  if (!vals.length) return null;
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10;
+}
+
 function updateSidebarAvail(portId) {
-  const latest = getLatestAvail(portId);
-  const col    = getDispColor(latest?.v ?? null);
-  const pct    = latest ? latest.v : 0;
+  // La lista lateral muestra el PROMEDIO del año en curso. Tras editar un mes,
+  // se recalcula desde portAvail (que ya está cargado para el puerto abierto).
+  const avg = yearAvgAvail(portId, statsYear);
+  if (portYearStats[portId]) portYearStats[portId].dispProm = avg;
+  const col   = getDispColor(avg);
+  const pct   = avg != null ? avg : 0;
+  const has   = avg != null;
 
   const sbar  = document.getElementById(`sidebar-fill-${portId}`);
   const slbl  = document.getElementById(`sidebar-lbl-${portId}`);
@@ -772,10 +935,18 @@ function updateSidebarAvail(portId) {
   const sbox  = document.getElementById(`sidebar-box-${portId}`);
 
   if (sbar) { sbar.style.width = pct + '%'; sbar.style.background = col; }
-  if (slbl) slbl.textContent = 'DISPONIBILIDAD MENSUAL' + (latest ? ' · ' + latest.label.toUpperCase() : '');
-  if (sval) { sval.textContent = latest ? latest.v.toFixed(1) : ''; sval.style.color = col; }
-  if (spct) { spct.style.color = col; spct.style.display = latest ? '' : 'none'; }
-  if (sbox) sbox.style.opacity = latest ? '1' : '0.4';
+  if (slbl) slbl.textContent = 'DISPONIBILIDAD PROMEDIO · ' + statsYear;
+  if (sval) {
+    if (has) {
+      sval.textContent = avg.toFixed(1);
+      sval.style.cssText = `color:${col};font-family:'Bebas Neue',sans-serif;font-size:1.1rem;display:inline-block;width:36px;text-align:right`;
+    } else {
+      sval.textContent = 'Sin datos';
+      sval.style.cssText = `font-family:'IBM Plex Mono',monospace;font-size:.55rem;color:var(--dim)`;
+    }
+  }
+  if (spct) { spct.style.color = col; spct.style.display = has ? '' : 'none'; }
+  if (sbox) sbox.style.opacity = has ? '1' : '0.4';
 }
 
 // ============================================================
@@ -893,10 +1064,16 @@ function buildMap() {
     pin.style.left = xPct+'%';
     pin.style.top  = yPct+'%';
     pin.style.position = 'absolute';
+    const ac = alertCount(port.id);
+    const badge = ac.total
+      ? `<div class="pin-badge" style="background:${alertColor(ac)}">${ac.total}</div>` : '';
+    const tipTxt = ac.total
+      ? `${port.short.toUpperCase()} · ${ac.total} alerta(s)` : port.short.toUpperCase();
     pin.innerHTML = `
       <div class="pin-ripple" style="border-color:${col}55;animation-delay:${port.id*0.4}s"></div>
       <div class="pin-pulse" style="background:${col};box-shadow:0 0 10px ${col},0 0 20px ${col}44"></div>
-      <div class="pin-tooltip">${port.short.toUpperCase()}</div>
+      ${badge}
+      <div class="pin-tooltip">${tipTxt}</div>
     `;
     pin.addEventListener('click', () => selectPort(port.id));
     container.appendChild(pin);
@@ -906,29 +1083,19 @@ function buildMap() {
 // ============================================================
 //  PORT LIST (sidebar)
 // ============================================================
-function getLatestAvail(portId) {
-  // Find the most recent month that has an availability value entered
-  const now = new Date();
-  for (let y = now.getFullYear(); y >= YEARS[0]; y--) {
-    const maxM = (y === now.getFullYear()) ? now.getMonth() : 11;
-    for (let mi = maxM; mi >= 0; mi--) {
-      const v = portAvail[portId]?.[y]?.[mi];
-      if (v !== null && v !== undefined) return { v, label: MONTHS[mi]+' '+y };
-    }
-  }
-  return null;
-}
-
 function buildPortList() {
   const list = document.getElementById('portsList');
   list.innerHTML = '';
   visiblePorts().forEach(port => {
-    const allData = YEARS.flatMap(y => portStore[port.id][y]).filter(Boolean);
-    const total   = allData.reduce((s,d)=>s+d.totalScans,0);
-    const mths    = allData.length;
-    const latest  = getLatestAvail(port.id);
-    const col     = getDispColor(latest?.v ?? null);
-    const pct     = latest ? latest.v : 0;
+    // Agregados del AÑO en curso: meses cargados, escaneos del año y
+    // disponibilidad PROMEDIO del año (no la del último mes).
+    const st      = portYearStats[port.id] || {meses:0, escaneos:0, dispProm:null};
+    const total   = st.escaneos;
+    const mths    = st.meses;
+    const avgDisp = st.dispProm;
+    const col     = getDispColor(avgDisp);
+    const pct     = avgDisp != null ? avgDisp : 0;
+    const latest  = avgDisp != null ? {v: avgDisp} : null;
 
     const card = document.createElement('div');
     card.className = 'pcard'; card.id = 'pcard-'+port.id;
@@ -940,7 +1107,7 @@ function buildPortList() {
         <div><span class="pstat-val">${total?total.toLocaleString('es-CO'):'—'}</span><span class="pstat-lbl">ESCANEOS</span></div>
       </div>
       <div class="pcard-disp">
-        <span class="disp-lbl" id="sidebar-lbl-${port.id}">DISPONIBILIDAD MENSUAL${latest?' · '+latest.label.toUpperCase():''}</span>
+        <span class="disp-lbl" id="sidebar-lbl-${port.id}">DISPONIBILIDAD PROMEDIO · ${statsYear}</span>
         <div class="disp-row">
           <div class="disp-bar-track">
             <div class="disp-bar-fill" id="sidebar-fill-${port.id}"
@@ -987,10 +1154,28 @@ async function openMonths(portId) {
   // Cargar desde PostgreSQL qué meses ya tienen datos guardados.
   await loadMesesFromAPI(portId);
 
+  // Combo de año: por defecto el año actual; al cambiarlo se re-pinta la
+  // cuadrícula con enero–diciembre del año elegido.
+  const ys = document.getElementById('yearSelect');
+  ys.innerHTML = YEARS.map(y => `<option value="${y}">${y}</option>`).join('');
+  if (!YEARS.includes(monthsYear)) monthsYear = YEARS[YEARS.length - 1];
+  ys.value = String(monthsYear);
+
+  renderMonthsGrid(portId, monthsYear);
+  goTo('months', portId);
+}
+
+// Cambio de año desde el combo: vuelve a pintar los 12 meses del año elegido.
+function onYearChange(yr) {
+  monthsYear = Number(yr);
+  if (selPort) renderMonthsGrid(selPort.id, monthsYear);
+}
+
+// Pinta los 12 meses (enero–diciembre) de UN año para el puerto indicado.
+function renderMonthsGrid(portId, year) {
   const grid = document.getElementById('monthsGrid');
   grid.innerHTML = '';
-  YEARS.forEach(year => {
-    MONTHS.forEach((mName, mi) => {
+  MONTHS.forEach((mName, mi) => {
       const data  = portStore[portId][year][mi];
       const avail = portAvail[portId][year][mi];
       const col   = getDispColor(avail);
@@ -1004,6 +1189,10 @@ async function openMonths(portId) {
         <div class="mcard-name">${mName.toUpperCase()}</div>
         <div class="mcard-year">${year}</div>
         <div class="mcard-badge ${data?'loaded':'empty'}">${data?`✓ ${data.totalScans.toLocaleString('es-CO')} escaneos`:'Sin datos'}</div>
+        ${(isPast && monthSLA[portId][year][mi]) ? `
+        <div class="sla-chip" style="--c:${slaVis(monthSLA[portId][year][mi].estado).color}"
+             title="${slaTitle(monthSLA[portId][year][mi]).replace(/"/g,'&quot;')}">
+          ● ${slaVis(monthSLA[portId][year][mi].estado).label}</div>` : ''}
         ${isPast&&!data&&CAN_EDIT?`
         <div class="mcard-upload">
           <label for="mu-${portId}-${year}-${mi}">⬆ Cargar XLS</label>
@@ -1068,9 +1257,7 @@ async function openMonths(portId) {
           notify('No se pueden cargar datos de un mes futuro.', 'warn'); });
       }
       grid.appendChild(card);
-    });
   });
-  goTo('months', portId);
 }
 
 // ============================================================
@@ -1100,7 +1287,9 @@ function processMonthFile(file, portId, year, monthIdx, opts={}) {
         const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
         portStore[portId][year][monthIdx] = parseData(rows, PORTS[portId].short, MONTHS[monthIdx], year, monthIdx+1);
       }
-      buildPortList();
+      await loadPortsFromAPI();           // refresca agregados del año (sidebar)
+      await loadAlertsResumen();          // el backend pudo abrir/cerrar alertas
+      updateAllPinBadges();
       await openMonths(portId);
       if (opts.openAfter) setTimeout(()=>openDashboard(portId,year,monthIdx),150);
     } catch(err){ notify(err.message, 'error'); }
@@ -1123,6 +1312,8 @@ async function bulkLoadFiles(fileList, currentPortId) {
   if (!ok.length) return;
   const rep = await apiUploadBulk(ok);             // cada archivo → su puerto/mes
   await loadPortsFromAPI();                         // refresca TODOS los puertos
+  await loadAlertsResumen();                        // el backend pudo generar alertas
+  updateAllPinBadges();
   if (currentPortId != null) await openMonths(currentPortId);
   showBulkSummary(rep);
 }
@@ -1263,7 +1454,7 @@ function loadDashFile(input) {
         portStore[selPort.id][selYear][selMonth] = parsed;
       }
       if (parsed) renderDashboard(parsed);
-      buildPortList();
+      await loadPortsFromAPI();           // refresca agregados del año (sidebar)
     } catch(err){ notify(err.message, 'error'); }
   };
   reader.readAsArrayBuffer(file);
@@ -1502,6 +1693,86 @@ async function openDashboard(portId, year, monthIdx) {
   }
   renderDashboard(data || emptyData());
   goTo('dashboard', portId, year, monthIdx);
+  renderSLAandAlerts(portId, year, monthIdx);   // estado SLA + alertas (async)
+}
+
+// ¿Puede el usuario gestionar (reconocer/resolver) alertas de este puerto?
+// Admin siempre; alimentador solo de su puerto (el backend lo reconfirma).
+function canManageAlerts(portId){
+  if (ROLE === 'admin') return true;
+  if (ROLE === 'alimentador') return ALLOWED_IDS && ALLOWED_IDS.includes(portId);
+  return false;
+}
+
+async function renderSLAandAlerts(portId, year, monthIdx){
+  const panel = document.getElementById('slaPanel');
+  const stateEl = document.getElementById('slaState');
+  const listEl  = document.getElementById('alertList');
+  if (!USE_API){ panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  stateEl.innerHTML = '<span class="dim">Cargando…</span>';
+  listEl.innerHTML = '';
+  let estado, alertas = [];
+  try {
+    estado = await apiGet(`/sla/${portId}/estado`);
+    alertas = await apiGet(`/alertas?puerto_id=${portId}&estado=open`);
+  } catch(e){
+    stateEl.innerHTML = `<span class="dim">No se pudo cargar el estado de SLA.</span>`;
+    return;
+  }
+  // Estado de SLA del mes mostrado (si está cargado) + meta + racha del puerto.
+  const ms = monthSLA[portId]?.[year]?.[monthIdx];
+  const vis = ms ? slaVis(ms.estado) : slaVis('SIN_DATOS');
+  const rachaTxt = estado.racha_incumplimiento > 0
+    ? `<span class="sla-streak" style="color:${estado.racha_incumplimiento>=estado.racha_critica?'#ff4444':'#ffd700'}">
+         ⚠ ${estado.racha_incumplimiento} mes(es) consecutivo(s) en incumplimiento</span>`
+    : `<span class="dim">Sin racha de incumplimiento</span>`;
+  stateEl.innerHTML = `
+    <div class="sla-state-row">
+      <span class="sla-chip-lg" style="--c:${vis.color}">● ${vis.label}</span>
+      <span class="dim">Meta de disponibilidad: <b style="color:var(--text)">${estado.umbral}%</b>
+        (${estado.origen === 'puerto' ? 'propia del puerto' : 'global por defecto'})</span>
+    </div>
+    <div class="sla-state-row">${rachaTxt}</div>
+    ${ms ? `<div class="sla-state-row dim">${slaTitle(ms)}</div>` : ''}`;
+
+  if (!alertas.length){
+    listEl.innerHTML = `<div class="alert-empty">✓ Sin alertas abiertas para este puerto.</div>`;
+    return;
+  }
+  const manage = canManageAlerts(portId);
+  listEl.innerHTML = alertas.map(a => {
+    const c = a.severidad === 'critical' ? '#ff4444' : a.severidad === 'warning' ? '#ffd700' : '#4aa3ff';
+    const periodo = a.mes_nombre ? `${a.mes_nombre} ${a.year}${a.dia?(' · día '+a.dia):''}` : '';
+    const estTag = a.estado === 'acknowledged' ? `<span class="alert-ack">reconocida</span>` : '';
+    const btns = manage ? `
+      <div class="alert-actions">
+        ${a.estado==='open'?`<button class="alert-btn" onclick="ackAlerta(${a.id},${portId},${year},${monthIdx})">Reconocer</button>`:''}
+        <button class="alert-btn resolve" onclick="resolveAlerta(${a.id},${portId},${year},${monthIdx})">Resolver</button>
+      </div>` : '';
+    return `<div class="alert-item" style="border-left-color:${c}">
+        <div class="alert-main">
+          <div class="alert-msg">${a.mensaje} ${estTag}</div>
+          <div class="alert-meta">${a.tipo} · ${a.severidad}${periodo?(' · '+periodo):''}</div>
+        </div>${btns}
+      </div>`;
+  }).join('');
+}
+
+async function ackAlerta(id, portId, year, monthIdx){
+  try { await apiPost(`/alertas/${id}/ack`); }
+  catch(e){ notify('No se pudo reconocer la alerta: '+e.message, 'error'); return; }
+  await refreshAlertas(portId, year, monthIdx);
+}
+async function resolveAlerta(id, portId, year, monthIdx){
+  try { await apiPost(`/alertas/${id}/resolve`); }
+  catch(e){ notify('No se pudo resolver la alerta: '+e.message, 'error'); return; }
+  await refreshAlertas(portId, year, monthIdx);
+}
+async function refreshAlertas(portId, year, monthIdx){
+  await loadAlertsResumen();                 // actualizar insignias del mapa/lista
+  updateAllPinBadges();
+  await renderSLAandAlerts(portId, year, monthIdx);
 }
 
 // Estado VACÍO real para un mes sin datos cargados. Antes se mostraban datos de
@@ -1637,9 +1908,15 @@ function renderTable(d) {
       <td class="num">${d.daysActive}</td>
       <td class="num">${d.peakDay.toLocaleString('es-CO')}</td>
       <td class="num">${d.operatorCount}</td>
-      ${d.empty || d.totalScans === 0
-        ? '<td style="color:var(--dim)">● SIN DATOS</td>'
-        : '<td style="color:var(--accent3)">● CARGADO</td>'}
+      ${(() => {
+        const ms = (selPort && selYear!=null && selMonth!=null)
+          ? monthSLA[selPort.id]?.[selYear]?.[selMonth] : null;
+        if (ms) { const v = slaVis(ms.estado);
+          return `<td style="color:${v.color}" title="${slaTitle(ms).replace(/"/g,'&quot;')}">● ${v.label}</td>`; }
+        return (d.empty || d.totalScans === 0)
+          ? '<td style="color:var(--dim)">● SIN DATOS</td>'
+          : '<td style="color:var(--accent3)">● CARGADO</td>';
+      })()}
     </tr>`;
 }
 
@@ -1655,6 +1932,7 @@ document.head.appendChild(s);
 // ya filtrado según el perfil.
 (async function init(){
   await loadCurrentUser();     // perfil, badge, enlace admin, botón de carga
+  await loadAlertsResumen();   // insignias de alertas por puerto (mapa + lista)
   await loadPortsFromAPI();    // ALLOWED_IDS, disponibilidades, lista lateral, aviso pendiente
   buildMap();                  // pines solo de los puertos visibles
 })();

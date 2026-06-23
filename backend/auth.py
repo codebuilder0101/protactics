@@ -65,6 +65,18 @@ def can_upload_port(user: User, puerto_id: int) -> bool:
     return False
 
 
+def can_manage_alerts(user: User, puerto_id: int) -> bool:
+    """¿Puede reconocer/resolver alertas de este puerto?
+
+    Admin (cualquier puerto) y el alimentador asignado a ese puerto. Los
+    observadores son de solo lectura y nunca mutan alertas."""
+    if user.role == ROLE_ADMIN:
+        return True
+    if user.role == ROLE_FEEDER:
+        return user.puerto_id == puerto_id
+    return False
+
+
 def allowed_port_ids(user: User):
     """IDs de puertos visibles. None significa 'todos'."""
     if user.role in (ROLE_ADMIN, ROLE_GLOBAL):

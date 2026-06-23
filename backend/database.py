@@ -123,6 +123,82 @@ def _ensure_daily_schema():
                     conn.execute(text(f"DROP TABLE {t}"))
 
 
+def _ensure_alerta_tipo_check():
+    """Amplía el CHECK de `alertas.tipo` para admitir los tipos de anomalía.
+
+    La tabla `alertas` se definió (Semana 1) con un CHECK que solo aceptaba
+    'sla_breach','no_upload','availability_low'. Los motores de inteligencia
+    operacional añaden tipos ('anomaly_low', 'ewma_drop', 'zero_day', ...). Esta
+    migración es idempotente:
+
+      • PostgreSQL: DROP + ADD del CONSTRAINT (la tabla puede tener filas; no se
+        tocan los datos, solo la restricción).
+      • SQLite (dev/test): los CHECK no se pueden alterar en sitio. Si la tabla
+        existe con el CHECK viejo (no menciona 'anomaly_low'), se elimina para que
+        create_all la recree con el CHECK nuevo. La tabla `alertas` está vacía en
+        cualquier despliegue real (el motor aún no escribía en ella), así que no
+        hay pérdida de datos. Mismo patrón que `_ensure_daily_schema`.
+    """
+    from models import _ALERTA_TIPOS_SQL
+    insp = inspect(engine)
+    if "alertas" not in insp.get_table_names():
+        return  # no existe aún: create_all la creará con el CHECK nuevo
+
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE alertas DROP CONSTRAINT IF EXISTS ck_alertas_tipo"))
+            conn.execute(text(
+                f"ALTER TABLE alertas ADD CONSTRAINT ck_alertas_tipo "
+                f"CHECK (tipo IN {_ALERTA_TIPOS_SQL})"))
+    else:
+        with engine.begin() as conn:
+            ddl = conn.execute(text(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='alertas'"
+            )).scalar()
+            if ddl and "anomaly_low" not in ddl:
+                conn.execute(text("DROP TABLE alertas"))
+
+
+def _ensure_alerta_columns():
+    """Agrega las columnas de período (year, mes, dia) a `alertas` si faltan.
+
+    En una BD preexistente (Postgres) la tabla `alertas` se creó sin estas
+    columnas; create_all no altera tablas existentes, así que se añaden con
+    ALTER TABLE (SQLite y Postgres soportan ADD COLUMN). En una BD nueva
+    create_all ya las incluye y esta función es un no-op. Idempotente.
+    """
+    insp = inspect(engine)
+    if "alertas" not in insp.get_table_names():
+        return
+    existing = {c["name"] for c in insp.get_columns("alertas")}
+    missing = [c for c in ("year", "mes", "dia") if c not in existing]
+    if not missing:
+        return
+    with engine.begin() as conn:
+        for name in missing:
+            conn.execute(text(f"ALTER TABLE alertas ADD COLUMN {name} INTEGER"))
+
+
+def _seed_default_sla():
+    """Garantiza una meta de SLA global por defecto (disponibilidad 95%).
+
+    `puerto_id` NULL = valor por defecto que aplica a todo puerto sin meta propia.
+    Existir SIEMPRE es importante: las infracciones referencian `sla_id` (FK no
+    nula), así que el motor necesita al menos esta fila para registrar
+    incumplimientos del caso por defecto. Idempotente.
+    """
+    from models import SLA
+    db = SessionLocal()
+    try:
+        existe = db.query(SLA).filter_by(puerto_id=None, metrica="availability").first()
+        if not existe:
+            db.add(SLA(puerto_id=None, metrica="availability", umbral=95.0,
+                       periodo="mensual", activo=True))
+            db.commit()
+    finally:
+        db.close()
+
+
 def _ensure_audit_immutable():
     """Refuerza la inmutabilidad de `auditoria` (append-only).
 
@@ -167,7 +243,9 @@ def _ensure_audit_immutable():
 def init_db():
     _ensure_user_columns()              # migrar tablas preexistentes
     _ensure_daily_schema()              # esquema por día para horas/operadores
-    Base.metadata.create_all(bind=engine)   # crea tablas nuevas (alertas, sla, ...)
+    _ensure_alerta_tipo_check()         # amplía CHECK de alertas.tipo (anomalías)
+    Base.metadata.create_all(bind=engine)   # crea tablas nuevas (alertas, sla, mantenimiento, ...)
+    _ensure_alerta_columns()            # columnas de período en alertas (BD preexistente)
     _ensure_audit_immutable()           # inmutabilidad de auditoría (solo Postgres)
     db = SessionLocal()
     try:
@@ -177,3 +255,4 @@ def init_db():
         db.commit()
     finally:
         db.close()
+    _seed_default_sla()                 # meta de SLA global por defecto (95%)

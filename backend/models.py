@@ -1,4 +1,4 @@
-from sqlalchemy import (Column, Integer, Float, String, DateTime, ForeignKey,
+from sqlalchemy import (Column, Integer, Float, String, DateTime, Date, ForeignKey,
                         UniqueConstraint, Boolean, Text, CheckConstraint, Index,
                         JSON, text)
 from sqlalchemy.dialects.postgresql import JSONB
@@ -131,6 +131,19 @@ class UserSession(Base):
 #  SEMANA 1 — Alertas, SLA, Infracciones y Auditoría
 # ══════════════════════════════════════════════════════════════
 
+# Tipos de alerta admitidos. Fuente única de verdad: lo consumen el CHECK de la
+# tabla `alertas`, la migración en database.py y los motores (anomalies.py / sla.py).
+# Cualquier tipo nuevo se agrega AQUÍ y se migra el CHECK (ver _ensure_alerta_tipo_check).
+ALERTA_TIPOS = (
+    "sla_breach", "no_upload", "availability_low",       # SLA / cobertura
+    "anomaly_low", "anomaly_high",                        # mediana móvil + MAD
+    "ewma_drop", "ewma_spike",                            # carta de control EWMA
+    "zero_day",                                           # días en cero en mes activo
+    "operator_drop",                                      # caída de operadores
+)
+_ALERTA_TIPOS_SQL = "(" + ",".join(f"'{t}'" for t in ALERTA_TIPOS) + ")"
+
+
 class Alerta(Base):
     """Alerta operativa de un puerto (incumplimiento de SLA, falta de carga, etc.).
 
@@ -141,17 +154,23 @@ class Alerta(Base):
     __tablename__ = "alertas"
     id          = Column(Integer, primary_key=True, autoincrement=True)
     puerto_id   = Column(Integer, ForeignKey("puertos.id"), nullable=False)
-    tipo        = Column(String, nullable=False)   # sla_breach|no_upload|availability_low
+    tipo        = Column(String, nullable=False)   # ver ALERTA_TIPOS
     severidad   = Column(String, nullable=False, default="warning")  # info|warning|critical
     mensaje     = Column(Text, nullable=False)
     estado      = Column(String, nullable=False, default="open")     # open|acknowledged|resolved
+    # Período al que apunta la alerta. Forman la clave de deduplicación
+    # (puerto_id, tipo, year, mes, dia) que usan los motores para no duplicar al
+    # recalcular. `dia` NULL = alerta de alcance mensual.
+    year        = Column(Integer)
+    mes         = Column(Integer)
+    dia         = Column(Integer)
     payload     = Column(JSONType)                 # datos de contexto (libre)
     creada_en   = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     resuelta_en = Column(DateTime(timezone=True))
     resuelta_por= Column(Integer, ForeignKey("users.id"))
 
     __table_args__ = (
-        CheckConstraint("tipo in ('sla_breach','no_upload','availability_low')",
+        CheckConstraint(f"tipo in {_ALERTA_TIPOS_SQL}",
                         name="ck_alertas_tipo"),
         CheckConstraint("severidad in ('info','warning','critical')",
                         name="ck_alertas_severidad"),
@@ -160,6 +179,7 @@ class Alerta(Base):
         # Índice parcial en Postgres (solo alertas abiertas); índice normal en SQLite.
         Index("ix_alertas_open", "puerto_id",
               postgresql_where=text("estado = 'open'")),
+        Index("ix_alertas_periodo", "puerto_id", "tipo", "year", "mes"),
     )
 
 
@@ -230,4 +250,37 @@ class AuditLog(Base):
     __table_args__ = (
         Index("ix_auditoria_creado", "creado_en"),
         Index("ix_auditoria_entidad", "entidad", "entidad_id"),
+    )
+
+
+# ══════════════════════════════════════════════════════════════
+#  INTELIGENCIA OPERACIONAL — Ventanas de mantenimiento
+# ══════════════════════════════════════════════════════════════
+
+class VentanaMantenimiento(Base):
+    """Período de mantenimiento programado o falla técnica del escáner.
+
+    Los días cubiertos por una ventana se EXCLUYEN tanto de la detección de
+    anomalías como del cálculo de SLA: no generan alertas ni cuentan contra la
+    meta (un cero durante mantenimiento programado es esperado, no anómalo).
+    La intersección con un mes se resuelve en `mantenimiento.dias_excluidos`.
+
+    Cubre días COMPLETOS [fecha_inicio, fecha_fin] inclusive. `fecha_fin` NULL
+    significa una ventana abierta (en curso), que cubre hasta el fin del mes
+    consultado.
+    """
+    __tablename__ = "mantenimiento"
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    puerto_id    = Column(Integer, ForeignKey("puertos.id"), nullable=False)
+    tipo         = Column(String, nullable=False)          # programado|falla_tecnica
+    fecha_inicio = Column(Date, nullable=False)
+    fecha_fin    = Column(Date, nullable=True)             # NULL = abierta/en curso
+    motivo       = Column(Text)
+    creada_por   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    creada_en    = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    cerrada_en   = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("tipo in ('programado','falla_tecnica')", name="ck_mant_tipo"),
+        Index("ix_mant_puerto", "puerto_id", "fecha_inicio", "fecha_fin"),
     )
