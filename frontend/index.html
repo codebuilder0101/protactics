@@ -870,6 +870,16 @@ function slaTitle(s){
   return t;
 }
 
+// Color del indicador de un mes: derivado del ESTADO DE SLA AUDITABLE del backend
+// (monthSLA: meta configurada del puerto + infracciones), NO de umbrales fijos del
+// front. Si aún no hay estado cargado (modo estático, o mes no consultado), cae a
+// getDispColor como respaldo neutro. Devuelve un color hex.
+function monthColor(portId, year, mi, fallbackVal){
+  const ms = monthSLA?.[portId]?.[year]?.[mi];
+  if (ms && ms.estado) return slaVis(ms.estado).color;
+  return getDispColor(fallbackVal);
+}
+
 // Estado de SLA por mes: monthSLA[portId][year][monthIdx] = {estado,motivo,observado,umbral,...}
 const monthSLA = {};
 PORTS.forEach(p => { monthSLA[p.id] = {}; YEARS.forEach(y => monthSLA[p.id][y] = Array(12).fill(null)); });
@@ -911,7 +921,7 @@ function saveAvail(portId, year, mi, val) {
   const n = parseFloat(val);
   portAvail[portId][year][mi] = (!isNaN(n) && n >= 0 && n <= 100) ? n : null;
   const v   = portAvail[portId][year][mi];
-  const col = getDispColor(v);
+  const col = monthColor(portId, year, mi, v);
 
   // Update month card bar + input color
   const fill  = document.getElementById(`disp-fill-${portId}-${year}-${mi}`);
@@ -943,7 +953,7 @@ function updateSidebarAvail(portId) {
   // ese mes, se recalcula desde portAvail (cargado para el puerto abierto).
   const val   = prevMonthAvail(portId);
   if (portYearStats[portId]) portYearStats[portId].dispPrev = val;
-  const col   = getDispColor(val);
+  const col   = monthColor(portId, PREV_MONTH_YEAR, PREV_MONTH_IDX, val);
   const pct   = val != null ? val : 0;
   const has   = val != null;
 
@@ -1111,7 +1121,7 @@ function buildPortList() {
     const total    = st.escaneos;
     const mths     = st.meses;
     const prevDisp = st.dispPrev;
-    const col      = getDispColor(prevDisp);
+    const col      = monthColor(port.id, PREV_MONTH_YEAR, PREV_MONTH_IDX, prevDisp);
     const pct      = prevDisp != null ? prevDisp : 0;
     const latest   = prevDisp != null ? {v: prevDisp} : null;
 
@@ -1196,7 +1206,7 @@ function renderMonthsGrid(portId, year) {
   MONTHS.forEach((mName, mi) => {
       const data  = portStore[portId][year][mi];
       const avail = portAvail[portId][year][mi];
-      const col   = getDispColor(avail);
+      const col   = monthColor(portId, year, mi, avail);
       const pct   = avail !== null ? avail : 0;
       const dispTxt = avail !== null ? avail.toFixed(1) : '';
       const now   = new Date();
@@ -1707,10 +1717,10 @@ async function openDashboard(portId, year, monthIdx) {
   }
   renderDashboard(data || emptyData());
   goTo('dashboard', portId, year, monthIdx);
-  // Panel de estado de SLA/alertas oculto: el indicador rojo de "INCUMPLE"
-  // confundía a los usuarios (un mes con pocos días cargados parecía un fallo).
-  const slaPanel = document.getElementById('slaPanel');
-  if (slaPanel) slaPanel.style.display = 'none';
+  // Estado de SLA auditable + panel de alertas del puerto-mes (badge, racha,
+  // lista de alertas y botones Reconocer/Resolver). Reemplaza el semáforo de
+  // umbrales fijos por el estado derivado del backend.
+  renderSLAandAlerts(portId, year, monthIdx);
 }
 
 // ¿Puede el usuario gestionar (reconocer/resolver) alertas de este puerto?
@@ -1814,7 +1824,11 @@ function renderDashboard(d) {
   const avail = (selPort && selYear !== null && selMonth !== null)
     ? portAvail[selPort.id]?.[selYear]?.[selMonth] ?? null
     : null;
-  const col = getDispColor(avail);
+  // Estado de SLA auditable del mes mostrado (color y etiqueta vienen del backend,
+  // no de umbrales fijos). Respaldo a getDispColor si aún no hay estado cargado.
+  const ms  = (selPort && selYear !== null && selMonth !== null)
+    ? monthSLA?.[selPort.id]?.[selYear]?.[selMonth] : null;
+  const col = monthColor(selPort?.id, selYear, selMonth, avail);
   const availEl  = document.getElementById('kpi-avail');
   const availBar = document.getElementById('kpi-avail-bar');
   const availSub = document.getElementById('kpi-avail-sub');
@@ -1825,7 +1839,8 @@ function renderDashboard(d) {
     availEl.style.textShadow = `0 0 20px ${col}55`;
     availBar.style.width      = avail + '%';
     availBar.style.background = col;
-    availSub.textContent = avail >= 95 ? '✓ Óptima' : avail >= 90 ? '⚠ Aceptable' : '✗ Por debajo del umbral';
+    availSub.textContent = ms && ms.estado ? slaVis(ms.estado).label
+      : (avail >= 95 ? '✓ Óptima' : avail >= 90 ? '⚠ Aceptable' : '✗ Por debajo del umbral');
     availSub.style.color = col;
   } else {
     availEl.textContent  = '—';
