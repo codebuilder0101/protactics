@@ -1189,10 +1189,6 @@ function renderMonthsGrid(portId, year) {
         <div class="mcard-name">${mName.toUpperCase()}</div>
         <div class="mcard-year">${year}</div>
         <div class="mcard-badge ${data?'loaded':'empty'}">${data?`✓ ${data.totalScans.toLocaleString('es-CO')} escaneos`:'Sin datos'}</div>
-        ${(isPast && monthSLA[portId][year][mi]) ? `
-        <div class="sla-chip" style="--c:${slaVis(monthSLA[portId][year][mi].estado).color}"
-             title="${slaTitle(monthSLA[portId][year][mi]).replace(/"/g,'&quot;')}">
-          ● ${slaVis(monthSLA[portId][year][mi].estado).label}</div>` : ''}
         ${isPast&&!data&&CAN_EDIT?`
         <div class="mcard-upload">
           <label for="mu-${portId}-${year}-${mi}">⬆ Cargar XLS</label>
@@ -1693,7 +1689,10 @@ async function openDashboard(portId, year, monthIdx) {
   }
   renderDashboard(data || emptyData());
   goTo('dashboard', portId, year, monthIdx);
-  renderSLAandAlerts(portId, year, monthIdx);   // estado SLA + alertas (async)
+  // Panel de estado de SLA/alertas oculto: el indicador rojo de "INCUMPLE"
+  // confundía a los usuarios (un mes con pocos días cargados parecía un fallo).
+  const slaPanel = document.getElementById('slaPanel');
+  if (slaPanel) slaPanel.style.display = 'none';
 }
 
 // ¿Puede el usuario gestionar (reconocer/resolver) alertas de este puerto?
@@ -1908,15 +1907,9 @@ function renderTable(d) {
       <td class="num">${d.daysActive}</td>
       <td class="num">${d.peakDay.toLocaleString('es-CO')}</td>
       <td class="num">${d.operatorCount}</td>
-      ${(() => {
-        const ms = (selPort && selYear!=null && selMonth!=null)
-          ? monthSLA[selPort.id]?.[selYear]?.[selMonth] : null;
-        if (ms) { const v = slaVis(ms.estado);
-          return `<td style="color:${v.color}" title="${slaTitle(ms).replace(/"/g,'&quot;')}">● ${v.label}</td>`; }
-        return (d.empty || d.totalScans === 0)
-          ? '<td style="color:var(--dim)">● SIN DATOS</td>'
-          : '<td style="color:var(--accent3)">● CARGADO</td>';
-      })()}
+      ${(d.empty || d.totalScans === 0)
+        ? '<td style="color:var(--dim)">● SIN DATOS</td>'
+        : '<td style="color:var(--accent3)">● CARGADO</td>'}
     </tr>`;
 }
 
