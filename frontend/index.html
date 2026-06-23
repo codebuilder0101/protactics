@@ -310,10 +310,27 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
   display:flex;align-items:center;justify-content:space-between;
   font-family:'IBM Plex Mono',monospace;font-size:.53rem;color:var(--dim);letter-spacing:.1em;}
 
-::-webkit-scrollbar{width:5px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+/* Scrollbar moderno: pista invisible y "pill" delgada con acento, holgura
+   alrededor (border transparente + background-clip) y suavizado al pasar. */
+*{scrollbar-width:thin;scrollbar-color:rgba(0,229,255,.35) transparent;}
+::-webkit-scrollbar{width:10px;height:10px;background:transparent;}
+::-webkit-scrollbar-track{background:transparent;border:none;}
+::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg,rgba(0,229,255,.45),rgba(11,181,204,.45));
+  border-radius:999px;
+  border:3px solid transparent;
+  background-clip:padding-box;
+  transition:background .2s;
+}
+::-webkit-scrollbar-thumb:hover{
+  background:linear-gradient(180deg,var(--accent),#0bb5cc);
+  background-clip:padding-box;
+}
+::-webkit-scrollbar-thumb:active{
+  background:linear-gradient(180deg,#5af0ff,var(--accent));
+  background-clip:padding-box;
+}
+::-webkit-scrollbar-corner{background:transparent;}
 
 @media(max-width:900px){
   .map-layout{grid-template-columns:1fr;height:auto;}
