@@ -91,6 +91,30 @@ def test_buscar_minimo_3_caracteres(client, admin):
     assert client.get("/buscar?q=ab").status_code == 400
 
 
+def test_buscar_por_prefijo(client, admin):
+    # Escribir un fragmento inicial ("FFAU") encuentra el contenedor completo.
+    _guardar(0, _detalle(contenedor="FFAU5573878"))
+    b = client.get("/buscar?q=FFAU").json()
+    assert b["modo"] == "prefijo"
+    assert b["total"] == 1
+    assert b["resultados"][0]["valor"] == "FFAU5573878"
+
+
+def test_buscar_por_substring(client, admin):
+    # Un fragmento interno también encuentra (modo 'contiene').
+    _guardar(0, _detalle(contenedor="FFAU5573878"))
+    b = client.get("/buscar?q=5573").json()
+    assert b["modo"] == "contiene"
+    assert b["resultados"][0]["valor"] == "FFAU5573878"
+
+
+def test_buscar_exacto_tiene_prioridad(client, admin):
+    # Si hay match exacto, no cae a parcial.
+    _guardar(0, _detalle(contenedor="FFAU5573878"))
+    b = client.get("/buscar?q=FFAU5573878").json()
+    assert b["modo"] == "exacto" and b["total"] == 1
+
+
 def test_buscar_por_placa(client, admin):
     _guardar(0, _detalle())
     body = client.get("/buscar?q=TLK300&tipo=placa").json()

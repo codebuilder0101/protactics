@@ -2077,12 +2077,17 @@ function csCobertura(t){
 
 function csRenderResultados(b){
   const body = document.getElementById('cs-body');
-  if (!b.total){ body.innerHTML = `<div class="cs-hint">Sin coincidencias para <b>${csEsc(b.q)}</b>.</div>`; return; }
+  if (!b.total){
+    body.innerHTML = `<div class="cs-hint">Sin coincidencias para <b>${csEsc(b.q)}</b>.</div>`; return;
+  }
   const rows = b.resultados.map(r =>
     `<div class="cs-row" onclick="csEscaneo(${r.fila_id})">
-       <span class="cs-val">${csEsc(r.puerto)} · ${csEsc(r.tipo)}${r.tipo_placa?(' ('+csEsc(r.tipo_placa)+')'):''}</span>
-       <span class="cs-meta">${csFecha(r.fecha_hora)} · ver ficha →</span></div>`).join('');
-  body.innerHTML = `<div class="cs-meta" style="margin-bottom:.5rem">${b.total} resultado(s) para <b>${csEsc(b.q)}</b></div>${rows}`;
+       <span class="cs-val">${csEsc(r.valor)}
+         <span class="cs-meta">${csEsc(r.tipo)}${r.tipo_placa?(' '+csEsc(r.tipo_placa)):''}</span></span>
+       <span class="cs-meta">${csEsc(r.puerto)} · ${csFecha(r.fecha_hora)} · ficha →</span></div>`).join('');
+  const nota = (b.modo && b.modo !== 'exacto')
+    ? ` <span class="cs-badge cs-no">coincidencia parcial</span>` : '';
+  body.innerHTML = `<div class="cs-meta" style="margin-bottom:.5rem">${b.total} resultado(s) para <b>${csEsc(b.q)}</b>${nota}</div>${rows}`;
 }
 
 async function csEscaneo(fid){

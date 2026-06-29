@@ -1213,26 +1213,39 @@ def buscar(q: str, request: Request, tipo: str = "auto",
     if tipo not in ("auto", "contenedor", "placa"):
         raise HTTPException(422, "tipo inválido (auto|contenedor|placa)")
 
-    query = db.query(IndiceIdentificador).filter(IndiceIdentificador.valor == valor)
+    # Filtros comunes (todo menos el valor). La condición sobre `valor` se aplica
+    # después en cascada: exacto → prefijo → contiene, para que escribir un
+    # fragmento ("FFAU") encuentre el contenedor completo ("FFAU5573878").
+    base = db.query(IndiceIdentificador)
     if tipo in ("contenedor", "placa"):
-        query = query.filter(IndiceIdentificador.tipo == tipo)
+        base = base.filter(IndiceIdentificador.tipo == tipo)
     if solo_validos:
-        query = query.filter(IndiceIdentificador.valido.is_(True))
+        base = base.filter(IndiceIdentificador.valido.is_(True))
     if puerto_id is not None:
         if not can_view_port(user, puerto_id):
             raise HTTPException(403, "No tienes permiso para ver este puerto")
-        query = query.filter(IndiceIdentificador.puerto_id == puerto_id)
+        base = base.filter(IndiceIdentificador.puerto_id == puerto_id)
+    base, vacio = _aplicar_alcance(base, user)
 
-    query, vacio = _aplicar_alcance(query, user)
-    rows = [] if vacio else query.all()
-    rows.sort(key=lambda r: (r.fecha_hora or datetime.min))
+    rows, modo = [], "exacto"
+    if not vacio:
+        rows = base.filter(IndiceIdentificador.valor == valor).all()
+        if not rows:
+            rows = base.filter(IndiceIdentificador.valor.like(valor + "%")).all()
+            modo = "prefijo"
+        if not rows:
+            rows = base.filter(IndiceIdentificador.valor.like("%" + valor + "%")).all()
+            modo = "contiene"
+
+    rows.sort(key=lambda r: (r.valor, r.fecha_hora or datetime.min))
     nombres = _nombres_puertos(db)
     resultados = [_ident_publico(r, nombres) for r in rows[:max(1, min(limit, 1000))]]
 
     record_audit(accion="buscar_identificador", entidad="busqueda",
                  entidad_id=valor, actor=user, request=request,
-                 detalle={"tipo": tipo, "resultados": len(rows)})
-    return {"q": valor, "tipo": tipo, "total": len(rows), "resultados": resultados}
+                 detalle={"tipo": tipo, "modo": modo, "resultados": len(rows)})
+    return {"q": valor, "tipo": tipo, "modo": modo,
+            "total": len(rows), "resultados": resultados}
 
 
 @app.get("/contenedor/{num}/trayecto")
