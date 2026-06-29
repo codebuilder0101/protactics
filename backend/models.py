@@ -284,3 +284,59 @@ class VentanaMantenimiento(Base):
         CheckConstraint("tipo in ('programado','falla_tecnica')", name="ck_mant_tipo"),
         Index("ix_mant_puerto", "puerto_id", "fecha_inicio", "fecha_fin"),
     )
+
+
+# ══════════════════════════════════════════════════════════════
+#  TRAZABILIDAD — Detalle por escaneo + índice de identificadores
+# ══════════════════════════════════════════════════════════════
+
+class EscaneoFila(Base):
+    """Una fila de un reporte de DETALLE (un escaneo individual), con TODAS sus
+    columnas guardadas tal cual en `datos` (JSON). Es la base del buscador de
+    contenedores/vehículos. Solo existe para los puertos que envían reporte de
+    detalle; los que envían estadística diaria agregada no generan estas filas.
+    Ver [[indice_identificadores]] para las claves de búsqueda extraídas."""
+    __tablename__ = "escaneo_filas"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    puerto_id   = Column(Integer, ForeignKey("puertos.id"), nullable=False)
+    formato     = Column(String)                       # standard|rapiscan|tcbuen|...
+    filename    = Column(String)
+    fila_idx    = Column(Integer)                       # nº de fila dentro del archivo
+    fecha_hora  = Column(DateTime)                      # del escaneo (puede ser NULL)
+    year        = Column(Integer, nullable=False)
+    mes         = Column(Integer, nullable=False)
+    dia         = Column(Integer)                       # NULL si la fecha no se pudo ubicar
+    datos       = Column(JSONType)                      # todas las columnas: {col: valor}
+    cargado_en  = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+    identificadores = relationship("IndiceIdentificador", back_populates="fila",
+                                   cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_escaneo_filas_puerto", "puerto_id", "fecha_hora"),
+        Index("ix_escaneo_filas_periodo", "puerto_id", "year", "mes", "dia"),
+    )
+
+
+class IndiceIdentificador(Base):
+    """Clave de búsqueda extraída de un [[escaneo_filas]]: un contenedor o una
+    matrícula, NORMALIZADO e indexado. Un escaneo puede generar varias filas
+    (varios contenedores). `valido` solo aplica a contenedores (ISO 6346)."""
+    __tablename__ = "indice_identificadores"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    fila_id     = Column(Integer, ForeignKey("escaneo_filas.id"), nullable=False)
+    puerto_id   = Column(Integer, ForeignKey("puertos.id"), nullable=False)
+    fecha_hora  = Column(DateTime)
+    tipo        = Column(String, nullable=False)        # contenedor|placa
+    valor       = Column(String, nullable=False)        # normalizado (mayúsculas, alfanumérico)
+    valido      = Column(Boolean)                        # contenedor: pasó ISO 6346
+    tipo_placa  = Column(String)                         # delantera|trasera|placa (solo placas)
+
+    fila = relationship("EscaneoFila", back_populates="identificadores")
+
+    __table_args__ = (
+        CheckConstraint("tipo in ('contenedor','placa')", name="ck_ident_tipo"),
+        Index("ix_ident_busqueda", "tipo", "valor"),
+        Index("ix_ident_valor", "valor"),
+        Index("ix_ident_fila", "fila_id"),
+    )

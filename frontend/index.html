@@ -1963,5 +1963,142 @@ document.head.appendChild(s);
   buildMap();                  // pines solo de los puertos visibles
 })();
 </script>
+
+<!-- ════════════════════════════════════════════════════════════
+     BÚSQUEDA Y TRAZABILIDAD DE CONTENEDORES / VEHÍCULOS
+     Widget aislado: botón flotante + modal. Reutiliza apiGet/notify.
+     ════════════════════════════════════════════════════════════ -->
+<style>
+  #cs-fab{position:fixed;right:1.4rem;bottom:1.4rem;z-index:900;display:flex;
+    align-items:center;gap:.5rem;padding:.7rem 1.1rem;border:1px solid #00e5ff55;
+    border-radius:30px;background:#06121f;color:#00e5ff;cursor:pointer;
+    font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:1px;
+    box-shadow:0 0 18px #00e5ff22;transition:.15s}
+  #cs-fab:hover{background:#0a1c2e;box-shadow:0 0 26px #00e5ff44}
+  #cs-modal{position:fixed;inset:0;z-index:901;background:#020912e0;
+    display:none;align-items:flex-start;justify-content:center;padding:6vh 1rem}
+  #cs-box{width:min(720px,96vw);max-height:84vh;overflow:auto;background:#06121f;
+    border:1px solid #123;border-radius:12px;box-shadow:0 10px 50px #000a}
+  #cs-head{display:flex;gap:.6rem;padding:1rem;border-bottom:1px solid #123;
+    position:sticky;top:0;background:#06121f;z-index:2}
+  #cs-input{flex:1;background:#020c16;border:1px solid #1c3550;border-radius:8px;
+    color:#dff;padding:.6rem .8rem;font-family:'IBM Plex Mono',monospace;font-size:.85rem}
+  #cs-input:focus{outline:none;border-color:#00e5ff88}
+  .cs-btn{background:#0a2236;border:1px solid #1c3550;color:#9cf;cursor:pointer;
+    border-radius:8px;padding:.55rem .9rem;font-family:'IBM Plex Mono',monospace;font-size:.7rem}
+  .cs-btn:hover{background:#103048}
+  #cs-body{padding:1rem}
+  .cs-hint{color:#5b7791;font-family:'IBM Plex Mono',monospace;font-size:.75rem;padding:1rem 0}
+  .cs-row{display:flex;justify-content:space-between;gap:.8rem;padding:.6rem .7rem;
+    border:1px solid #122537;border-radius:8px;margin-bottom:.5rem;cursor:pointer}
+  .cs-row:hover{border-color:#00e5ff55;background:#08182a}
+  .cs-val{color:#dff;font-family:'IBM Plex Mono',monospace;font-size:.82rem}
+  .cs-meta{color:#6b86a0;font-size:.66rem;font-family:'IBM Plex Mono',monospace}
+  .cs-step{display:flex;align-items:center;gap:.7rem;padding:.45rem 0}
+  .cs-dot{width:10px;height:10px;border-radius:50%;background:#00e5ff;flex:none;box-shadow:0 0 8px #00e5ff}
+  .cs-port{color:#fff;font-size:.85rem}.cs-when{color:#6b86a0;font-size:.66rem;font-family:'IBM Plex Mono',monospace}
+  .cs-badge{font-size:.6rem;padding:.1rem .5rem;border-radius:10px;font-family:'IBM Plex Mono',monospace}
+  .cs-ok{color:#39ff14;border:1px solid #39ff1455}.cs-no{color:#ffd700;border:1px solid #ffd70055}
+  .cs-warn{color:#ff9f43;font-size:.68rem;font-family:'IBM Plex Mono',monospace;margin-top:.8rem}
+  .cs-kv{display:grid;grid-template-columns:auto 1fr;gap:.35rem .9rem;font-family:'IBM Plex Mono',monospace;font-size:.72rem}
+  .cs-k{color:#6b86a0}.cs-v{color:#dff;word-break:break-word}
+</style>
+
+<div id="cs-fab" onclick="csOpen()">🔎 BUSCAR CONTENEDOR / PLACA</div>
+<div id="cs-modal" onclick="if(event.target===this)csClose()">
+  <div id="cs-box">
+    <div id="cs-head">
+      <input id="cs-input" placeholder="Nº de contenedor (MSGU9035797) o placa…"
+             onkeydown="if(event.key==='Enter')csRun();if(event.key==='Escape')csClose()">
+      <button class="cs-btn" onclick="csRun()">Buscar</button>
+      <button class="cs-btn" onclick="csClose()">✕</button>
+    </div>
+    <div id="cs-body"><div class="cs-hint">Escribe un número de contenedor o una placa y pulsa Buscar.</div></div>
+  </div>
+</div>
+
+<script>
+function csOpen(){ document.getElementById('cs-modal').style.display='flex';
+  setTimeout(()=>document.getElementById('cs-input').focus(),50); }
+function csClose(){ document.getElementById('cs-modal').style.display='none'; }
+function csEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function csFecha(iso){ if(!iso) return '—'; return String(iso).replace('T',' ').slice(0,16); }
+
+async function csRun(){
+  const body = document.getElementById('cs-body');
+  const q = document.getElementById('cs-input').value.trim();
+  if (q.replace(/[^A-Za-z0-9]/g,'').length < 3){
+    body.innerHTML = '<div class="cs-hint">Escribe al menos 3 caracteres.</div>'; return;
+  }
+  body.innerHTML = '<div class="cs-hint">Buscando…</div>';
+  const norm = q.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const esContenedor = /^[A-Z]{4}\d{6,7}$/.test(norm);
+  try {
+    if (esContenedor){
+      const t = await apiGet('/contenedor/'+encodeURIComponent(norm)+'/trayecto');
+      csRenderTrayecto(t);
+    } else {
+      const b = await apiGet('/buscar?q='+encodeURIComponent(q));
+      csRenderResultados(b);
+    }
+  } catch(e){ body.innerHTML = '<div class="cs-hint">No se pudo buscar: '+csEsc(e.message)+'</div>'; }
+}
+
+function csRenderTrayecto(t){
+  const body = document.getElementById('cs-body');
+  if (!t.pasos.length){
+    body.innerHTML = `<div class="cs-hint">Sin registros para <b>${csEsc(t.contenedor)}</b> en los puertos que puedes ver.</div>`
+      + csCobertura(t); return;
+  }
+  const badge = t.valido ? '<span class="cs-badge cs-ok">ISO 6346 ✓</span>'
+                         : '<span class="cs-badge cs-no">formato no estándar</span>';
+  const steps = t.puertos.map(p =>
+    `<div class="cs-step"><div class="cs-dot"></div>
+       <div><div class="cs-port">${csEsc(p.puerto)}</div>
+       <div class="cs-when">primer paso: ${csFecha(p.primera_fecha)}</div></div></div>`).join('');
+  const pasos = t.pasos.map(p =>
+    `<div class="cs-row" onclick="csEscaneo(${p.fila_id})">
+       <span class="cs-val">${csEsc(p.puerto)}</span>
+       <span class="cs-meta">${csFecha(p.fecha_hora)} · ver ficha →</span></div>`).join('');
+  body.innerHTML =
+    `<div style="margin-bottom:.8rem"><span class="cs-val">${csEsc(t.contenedor)}</span> ${badge}</div>
+     <div class="cs-meta" style="margin-bottom:.3rem">ITINERARIO — ${t.puertos.length} puerto(s)</div>
+     ${steps}
+     <div class="cs-meta" style="margin:1rem 0 .3rem">PASOS (${t.pasos.length})</div>
+     ${pasos}${csCobertura(t)}`;
+}
+
+function csCobertura(t){
+  const sin = (t.cobertura && t.cobertura.puertos_sin_detalle) || [];
+  if (!sin.length) return '';
+  return `<div class="cs-warn">⚠ Sin cobertura de detalle (no rastreable): `
+    + sin.map(p=>csEsc(p.puerto)).join(', ') + `. Un resultado vacío ahí no significa que el contenedor no haya pasado.</div>`;
+}
+
+function csRenderResultados(b){
+  const body = document.getElementById('cs-body');
+  if (!b.total){ body.innerHTML = `<div class="cs-hint">Sin coincidencias para <b>${csEsc(b.q)}</b>.</div>`; return; }
+  const rows = b.resultados.map(r =>
+    `<div class="cs-row" onclick="csEscaneo(${r.fila_id})">
+       <span class="cs-val">${csEsc(r.puerto)} · ${csEsc(r.tipo)}${r.tipo_placa?(' ('+csEsc(r.tipo_placa)+')'):''}</span>
+       <span class="cs-meta">${csFecha(r.fecha_hora)} · ver ficha →</span></div>`).join('');
+  body.innerHTML = `<div class="cs-meta" style="margin-bottom:.5rem">${b.total} resultado(s) para <b>${csEsc(b.q)}</b></div>${rows}`;
+}
+
+async function csEscaneo(fid){
+  const body = document.getElementById('cs-body');
+  body.innerHTML = '<div class="cs-hint">Cargando ficha…</div>';
+  try {
+    const e = await apiGet('/escaneo/'+fid);
+    const kv = Object.entries(e.datos||{}).map(([k,v])=>
+      `<div class="cs-k">${csEsc(k)}</div><div class="cs-v">${csEsc(v)}</div>`).join('');
+    body.innerHTML =
+      `<button class="cs-btn" onclick="csRun()">← volver a resultados</button>
+       <div style="margin:.8rem 0 .3rem" class="cs-meta">${csEsc(e.puerto)} · ${csFecha(e.fecha_hora)} · ${csEsc(e.formato||'')}</div>
+       <div style="margin-bottom:.6rem" class="cs-val">Contenedores: ${e.contenedores.map(csEsc).join(', ')||'—'} · Placas: ${e.placas.map(p=>csEsc(p.valor)).join(', ')||'—'}</div>
+       <div class="cs-kv">${kv}</div>`;
+  } catch(err){ body.innerHTML = '<div class="cs-hint">No se pudo cargar la ficha: '+csEsc(err.message)+'</div>'; }
+}
+</script>
 </body>
 </html>

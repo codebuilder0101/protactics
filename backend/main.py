@@ -21,8 +21,10 @@ from sqlalchemy.orm import Session
 from database import get_db, init_db, SessionLocal
 from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
                     Operadores, Disponibilidad, ArchivosCargados, User, AuditLog,
-                    Alerta, SLA, Infraccion, VentanaMantenimiento)
+                    Alerta, SLA, Infraccion, VentanaMantenimiento,
+                    EscaneoFila, IndiceIdentificador)
 from parsers import parse_file, detect_format
+import identificadores
 from routing import route_file, detect_period, detect_port
 from audit import record_audit, verify_chain
 from auth import (router as auth_router, get_current_user, require_admin,
@@ -354,6 +356,59 @@ def _run_engines_safe(db: Session, puerto_id: int, year: int, mes: int, actor_id
                    "puerto=%s %s/%s: %s", puerto_id, year, mes, e)
 
 
+def guardar_detalle(db: Session, puerto_id: int, year: int, mes: int,
+                    raw_rows: list, filename: str, formato: str) -> int:
+    """Persiste el DETALLE por escaneo (todas las columnas) + el índice de
+    contenedores/matrículas, para los reportes que lo traen. Idempotente por día:
+    reemplaza solo los días presentes en este archivo (igual que save_parsed_data),
+    de modo que acumular reportes diarios no borra los días ya cargados. Devuelve
+    el nº de filas de detalle guardadas. Para reportes-resumen (sin columnas de
+    contenedor/matrícula) no hace nada y devuelve 0."""
+    filas = identificadores.extraer_filas(raw_rows, year, mes)
+    if not filas:
+        return 0
+
+    dias = {f["dia"] for f in filas if f["dia"] is not None}
+    if dias:
+        viejas = [r.id for r in db.query(EscaneoFila.id).filter(
+            EscaneoFila.puerto_id == puerto_id, EscaneoFila.year == year,
+            EscaneoFila.mes == mes, EscaneoFila.dia.in_(dias)).all()]
+        if viejas:
+            db.query(IndiceIdentificador).filter(
+                IndiceIdentificador.fila_id.in_(viejas)).delete(synchronize_session=False)
+            db.query(EscaneoFila).filter(
+                EscaneoFila.id.in_(viejas)).delete(synchronize_session=False)
+
+    for idx, f in enumerate(filas):
+        fila = EscaneoFila(puerto_id=puerto_id, formato=formato, filename=filename,
+                           fila_idx=idx, fecha_hora=f["fecha_hora"], year=year,
+                           mes=mes, dia=f["dia"], datos=f["datos"],
+                           cargado_en=datetime.utcnow())
+        db.add(fila)
+        db.flush()
+        for c in f["contenedores"]:
+            db.add(IndiceIdentificador(
+                fila_id=fila.id, puerto_id=puerto_id, fecha_hora=f["fecha_hora"],
+                tipo="contenedor", valor=c, valido=identificadores.validar_iso6346(c)))
+        for valor, tipo_placa in f["placas"]:
+            db.add(IndiceIdentificador(
+                fila_id=fila.id, puerto_id=puerto_id, fecha_hora=f["fecha_hora"],
+                tipo="placa", valor=valor, valido=None, tipo_placa=tipo_placa))
+    db.commit()
+    return len(filas)
+
+
+def _guardar_detalle_safe(db: Session, puerto_id: int, year: int, mes: int,
+                          raw_rows: list, filename: str, formato: str):
+    """A prueba de fallos: la trazabilidad nunca debe romper la carga."""
+    try:
+        guardar_detalle(db, puerto_id, year, mes, raw_rows, filename, formato)
+    except Exception as e:
+        db.rollback()
+        _log.error("Detalle de trazabilidad falló en puerto=%s %s/%s: %s",
+                   puerto_id, year, mes, e)
+
+
 def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
                    raw_rows: list, filename: str) -> dict:
     """Detecta, parsea y guarda un archivo ya leído para (puerto, year, mes).
@@ -381,6 +436,10 @@ def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
     # puerto (racha + meses faltantes). Nunca debe romper la carga: si falla, se
     # revierte SOLO lo del motor (los datos ya están confirmados) y se registra.
     _run_engines_safe(db, puerto.id, year, mes)
+
+    # Trazabilidad: guardar el detalle por escaneo (contenedores/matrículas) si el
+    # reporte lo trae. A prueba de fallos (no rompe la carga).
+    _guardar_detalle_safe(db, puerto.id, year, mes, raw_rows, filename, data["format"])
 
     month_total = db.query(func.coalesce(func.sum(EscaneosDiarios.total), 0))\
         .filter_by(puerto_id=puerto.id, year=year, mes=mes).scalar() or 0
@@ -1106,3 +1165,139 @@ def recalcular(puerto_id: int, year: int, mes: int, request: Request,
     ).count()
     return {"ok": True, "puerto_id": puerto_id, "year": year, "mes": mes,
             "alertas_abiertas": abiertas}
+
+
+# ══════════════════════════════════════════════════════════════
+#  BÚSQUEDA Y TRAZABILIDAD DE CONTENEDORES / VEHÍCULOS
+# ══════════════════════════════════════════════════════════════
+def _nombres_puertos(db: Session) -> dict:
+    return {p.id: p.nombre_corto for p in db.query(Puerto).all()}
+
+
+def _puertos_con_detalle(db: Session) -> set:
+    """IDs de puertos que han enviado reporte de DETALLE (rastreables)."""
+    return {r[0] for r in db.query(EscaneoFila.puerto_id).distinct().all()}
+
+
+def _ident_publico(ix, nombres) -> dict:
+    return {
+        "fila_id": ix.fila_id, "puerto_id": ix.puerto_id,
+        "puerto": nombres.get(ix.puerto_id),
+        "tipo": ix.tipo, "valor": ix.valor, "valido": ix.valido,
+        "tipo_placa": ix.tipo_placa,
+        "fecha_hora": ix.fecha_hora.isoformat() if ix.fecha_hora else None,
+    }
+
+
+def _aplicar_alcance(query, user):
+    """Filtra una query de IndiceIdentificador por los puertos visibles del user.
+    Devuelve (query, vacio) — vacio=True si el user no puede ver ningún puerto."""
+    ids = allowed_port_ids(user)
+    if ids is not None:
+        if not ids:
+            return query, True
+        query = query.filter(IndiceIdentificador.puerto_id.in_(ids))
+    return query, False
+
+
+@app.get("/buscar")
+def buscar(q: str, request: Request, tipo: str = "auto",
+           puerto_id: Optional[int] = None, solo_validos: bool = False,
+           limit: int = 200, db: Session = Depends(get_db),
+           user: User = Depends(get_current_user)):
+    """Busca un contenedor o matrícula (match exacto, normalizado). Respeta el
+    alcance de puertos del usuario y audita la consulta."""
+    valor = identificadores.normalizar(q)
+    if len(valor) < 3:
+        raise HTTPException(400, "La búsqueda requiere al menos 3 caracteres.")
+    if tipo not in ("auto", "contenedor", "placa"):
+        raise HTTPException(422, "tipo inválido (auto|contenedor|placa)")
+
+    query = db.query(IndiceIdentificador).filter(IndiceIdentificador.valor == valor)
+    if tipo in ("contenedor", "placa"):
+        query = query.filter(IndiceIdentificador.tipo == tipo)
+    if solo_validos:
+        query = query.filter(IndiceIdentificador.valido.is_(True))
+    if puerto_id is not None:
+        if not can_view_port(user, puerto_id):
+            raise HTTPException(403, "No tienes permiso para ver este puerto")
+        query = query.filter(IndiceIdentificador.puerto_id == puerto_id)
+
+    query, vacio = _aplicar_alcance(query, user)
+    rows = [] if vacio else query.all()
+    rows.sort(key=lambda r: (r.fecha_hora or datetime.min))
+    nombres = _nombres_puertos(db)
+    resultados = [_ident_publico(r, nombres) for r in rows[:max(1, min(limit, 1000))]]
+
+    record_audit(accion="buscar_identificador", entidad="busqueda",
+                 entidad_id=valor, actor=user, request=request,
+                 detalle={"tipo": tipo, "resultados": len(rows)})
+    return {"q": valor, "tipo": tipo, "total": len(rows), "resultados": resultados}
+
+
+@app.get("/contenedor/{num}/trayecto")
+def trayecto_contenedor(num: str, request: Request,
+                        db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """Itinerario de un contenedor: puertos por los que pasó, en orden cronológico.
+    Incluye advertencia de cobertura (puertos sin reporte de detalle no aparecen
+    aunque el contenedor pudiera haber pasado por ellos)."""
+    valor = identificadores.normalizar(num)
+    if len(valor) < 3:
+        raise HTTPException(400, "El contenedor requiere al menos 3 caracteres.")
+
+    query = db.query(IndiceIdentificador).filter(
+        IndiceIdentificador.tipo == "contenedor", IndiceIdentificador.valor == valor)
+    query, vacio = _aplicar_alcance(query, user)
+    rows = [] if vacio else query.all()
+    rows.sort(key=lambda r: (r.fecha_hora or datetime.min))
+
+    nombres = _nombres_puertos(db)
+    pasos = [_ident_publico(r, nombres) for r in rows]
+
+    # Puertos distintos en orden de primera aparición.
+    puertos, vistos = [], set()
+    for r in rows:
+        if r.puerto_id not in vistos:
+            vistos.add(r.puerto_id)
+            puertos.append({"puerto_id": r.puerto_id,
+                            "puerto": nombres.get(r.puerto_id),
+                            "primera_fecha": r.fecha_hora.isoformat() if r.fecha_hora else None})
+
+    con_detalle = _puertos_con_detalle(db)
+    ids_visibles = allowed_port_ids(user)
+    todos = [p.id for p in db.query(Puerto).all()
+             if ids_visibles is None or p.id in ids_visibles]
+    sin_cobertura = [{"puerto_id": pid, "puerto": nombres.get(pid)}
+                     for pid in todos if pid not in con_detalle]
+
+    record_audit(accion="trayecto_contenedor", entidad="busqueda",
+                 entidad_id=valor, actor=user, request=request,
+                 detalle={"puertos": len(puertos), "pasos": len(rows)})
+    return {"contenedor": valor, "valido": identificadores.validar_iso6346(valor),
+            "puertos": puertos, "pasos": pasos,
+            "cobertura": {"puertos_sin_detalle": sin_cobertura}}
+
+
+@app.get("/escaneo/{fila_id}")
+def escaneo_detalle(fila_id: int, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    """Ficha completa de un escaneo: TODAS las columnas guardadas + sus
+    identificadores (contenedores/matrículas)."""
+    fila = db.query(EscaneoFila).filter_by(id=fila_id).first()
+    if not fila:
+        raise HTTPException(404, "Escaneo no encontrado")
+    if not can_view_port(user, fila.puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
+    nombres = _nombres_puertos(db)
+    idents = db.query(IndiceIdentificador).filter_by(fila_id=fila.id).all()
+    return {
+        "id": fila.id, "puerto_id": fila.puerto_id,
+        "puerto": nombres.get(fila.puerto_id), "formato": fila.formato,
+        "filename": fila.filename, "year": fila.year, "mes": fila.mes, "dia": fila.dia,
+        "fecha_hora": fila.fecha_hora.isoformat() if fila.fecha_hora else None,
+        "datos": fila.datos or {},
+        "contenedores": [i.valor for i in idents if i.tipo == "contenedor"],
+        "placas": [{"valor": i.valor, "tipo": i.tipo_placa}
+                   for i in idents if i.tipo == "placa"],
+    }
