@@ -2047,8 +2047,8 @@ async function csRun(){
 function csRenderTrayecto(t){
   const body = document.getElementById('cs-body');
   if (!t.pasos.length){
-    body.innerHTML = `<div class="cs-hint">Sin registros para <b>${csEsc(t.contenedor)}</b> en los puertos que puedes ver.</div>`
-      + csCobertura(t); return;
+    body.innerHTML = `<div class="cs-hint">Sin registros para <b>${csEsc(t.contenedor)}</b> en los puertos que puedes ver.</div>`;
+    return;
   }
   const badge = t.valido ? '<span class="cs-badge cs-ok">ISO 6346 ✓</span>'
                          : '<span class="cs-badge cs-no">formato no estándar</span>';
@@ -2065,14 +2065,7 @@ function csRenderTrayecto(t){
      <div class="cs-meta" style="margin-bottom:.3rem">ITINERARIO — ${t.puertos.length} puerto(s)</div>
      ${steps}
      <div class="cs-meta" style="margin:1rem 0 .3rem">PASOS (${t.pasos.length})</div>
-     ${pasos}${csCobertura(t)}`;
-}
-
-function csCobertura(t){
-  const sin = (t.cobertura && t.cobertura.puertos_sin_detalle) || [];
-  if (!sin.length) return '';
-  return `<div class="cs-warn">⚠ Sin cobertura de detalle (no rastreable): `
-    + sin.map(p=>csEsc(p.puerto)).join(', ') + `. Un resultado vacío ahí no significa que el contenedor no haya pasado.</div>`;
+     ${pasos}`;
 }
 
 function csRenderResultados(b){
