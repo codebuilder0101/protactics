@@ -442,6 +442,12 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
       <div class="sidebar-head">
         <div class="sidebar-title">PUERTOS ESCÁNER</div>
         <div class="sidebar-sub">Haz clic en un puerto para ver reportes</div>
+        <button class="btn-file" id="btnInformeNacional"
+                style="display:none;cursor:pointer;border:none;font:inherit;margin-top:.7rem;width:100%;justify-content:center"
+                onclick="descargarInformeNacional()"
+                title="Descargar el informe PDF consolidado nacional">
+          📊 INFORME NACIONAL (PDF)
+        </button>
       </div>
       <div class="ports-list" id="portsList"></div>
     </div>
@@ -495,9 +501,16 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
         <span class="ctx-month" id="ctxMonth">—</span>
       </div>
     </div>
-    <div class="btn-file" id="dashUploadBtn">
-      <input type="file" accept=".xls,.xlsx" onchange="loadDashFile(this)">
-      ⬆ CARGAR / REEMPLAZAR XLS
+    <div style="display:flex;align-items:center;gap:.6rem">
+      <button class="btn-file" style="cursor:pointer;border:none;font:inherit"
+              id="dashPdfBtn" onclick="descargarInformePuerto()"
+              title="Descargar el informe PDF de gestión de este mes">
+        📄 INFORME PDF
+      </button>
+      <div class="btn-file" id="dashUploadBtn">
+        <input type="file" accept=".xls,.xlsx" onchange="loadDashFile(this)">
+        ⬆ CARGAR / REEMPLAZAR XLS
+      </div>
     </div>
   </div>
   <main>
@@ -679,6 +692,10 @@ async function loadCurrentUser(){
       document.getElementById('dashUploadBtn').style.display = 'none';
       document.getElementById('multiLoadBtn').style.display = 'none';
     }
+    // El informe nacional (PDF) solo para alcance global (admin / observador global).
+    const natBtn = document.getElementById('btnInformeNacional');
+    if (natBtn) natBtn.style.display =
+      (ROLE === 'admin' || ROLE === 'observador_global') ? 'flex' : 'none';
   }catch(_){ window.location.href='/login'; }
 }
 
@@ -1024,6 +1041,18 @@ function setBreadcrumb(view, portId, year, monthIdx) {
 // ============================================================
 // Real Colombia outline from GeoJSON (johan/world.geo.json, CC0)
 const COLOMBIA_PATH = "M152.8,450.9 L137.0,442.8 L118.8,431.4 L108.3,436.9 L76.9,432.1 L67.8,417.4 L60.9,417.9 L23.9,398.4 L18.9,387.7 L32.7,385.2 L31.0,368.0 L39.7,355.6 L58.1,353.3 L73.7,331.7 L87.9,313.7 L74.2,305.6 L81.2,285.7 L72.8,254.3 L80.8,245.3 L74.9,216.3 L59.9,198.0 L64.7,181.4 L76.6,183.8 L83.6,173.6 L75.0,153.5 L79.5,148.4 L98.6,149.5 L126.4,125.6 L141.7,121.9 L142.0,110.6 L148.9,81.6 L170.1,65.7 L193.5,65.1 L196.4,57.9 L225.4,60.8 L254.5,43.5 L269.0,35.8 L286.9,19.3 L300.0,21.4 L309.7,30.4 L302.5,42.0 L278.7,47.7 L269.3,64.8 L255.0,74.7 L244.2,87.4 L239.7,111.9 L229.4,131.9 L248.6,134.2 L253.3,150.0 L261.5,157.5 L264.4,171.3 L260.0,184.0 L261.3,191.2 L270.4,194.0 L279.3,206.0 L326.9,202.7 L348.4,207.1 L374.5,236.6 L389.4,232.9 L416.1,234.7 L437.2,230.8 L450.3,236.7 L443.6,255.2 L435.4,266.7 L432.5,291.3 L439.9,314.1 L450.5,324.3 L451.7,331.9 L433.0,349.0 L446.4,356.6 L456.2,368.5 L467.5,402.7 L460.6,407.0 L453.3,386.7 L443.0,375.9 L430.8,387.7 L358.6,386.9 L359.1,408.4 L380.8,411.9 L379.5,425.1 L372.1,421.5 L351.3,427.2 L351.1,452.1 L367.5,464.6 L373.3,484.2 L372.4,499.1 L355.8,593.1 L337.3,574.9 L326.2,574.0 L350.1,539.1 L321.7,523.1 L299.5,526.0 L286.1,520.1 L265.7,529.2 L238.1,524.9 L216.3,488.9 L199.2,480.1 L187.3,463.9 L162.7,447.7 L152.8,450.9 Z";
+
+// ── Informes PDF (descarga directa; usa la cookie de sesión) ──────────
+function descargarInformePuerto(){
+  if(!selPort || selYear === null || selMonth === null){
+    notify('Abre el mes de un puerto para descargar su informe.', 'warn');
+    return;
+  }
+  window.open(`${API_URL}/reportes/pdf/puerto/${selPort.id}/${selYear}/${selMonth+1}`, '_blank');
+}
+function descargarInformeNacional(){
+  window.open(`${API_URL}/reportes/pdf/nacional`, '_blank');
+}
 
 function buildMap() {
   const container = document.getElementById('map-svg-container');

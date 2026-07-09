@@ -301,13 +301,13 @@ def me(user: User = Depends(get_current_user)):
 # desactivar con SEED_DEMO_USERS=false. ⚠ Cambia/elimina estas cuentas antes
 # de producción: usan contraseñas conocidas.
 DEMO_USERS = [
-    dict(email="admin@protactics.co",       password="admin1234",
+    dict(email="admin@protactics.co",       password="admin1234!",
          nombre="Administrador General",      role=ROLE_ADMIN,    puerto_id=None),
-    dict(email="global@protactics.co",       password="global1234",
+    dict(email="global@protactics.co",       password="global1234!",
          nombre="Observador Global",          role=ROLE_GLOBAL,   puerto_id=None),
-    dict(email="observador@protactics.co",   password="observador1234",
+    dict(email="observador@protactics.co",   password="observador1234!",
          nombre="Observador TCBUEN",          role=ROLE_OBSERVER, puerto_id=2),   # TCBUEN
-    dict(email="alimentador@protactics.co",  password="alimentador1234",
+    dict(email="alimentador@protactics.co",  password="alimentador1234!",
          nombre="Alimentador Buenaventura",   role=ROLE_FEEDER,   puerto_id=0),   # SPR Buenaventura
 ]
 

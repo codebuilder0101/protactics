@@ -4,13 +4,14 @@ FastAPI + SQLAlchemy + PostgreSQL (SQLite para desarrollo local)
 """
 import io
 import os
+import re
 import calendar
 from datetime import datetime, date
 from typing import Optional
 
 import openpyxl
 import xlrd
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,6 +34,7 @@ from auth import (router as auth_router, get_current_user, require_admin,
 import mantenimiento as mant
 import sla as sla_engine
 import anomalies
+from reportes import datos as rep_datos, pdf as rep_pdf
 
 # ── App ────────────────────────────────────────────────────
 app = FastAPI(title="PROTACTICS API", version="1.0.0")
@@ -1165,6 +1167,107 @@ def recalcular(puerto_id: int, year: int, mes: int, request: Request,
     ).count()
     return {"ok": True, "puerto_id": puerto_id, "year": year, "mes": mes,
             "alertas_abiertas": abiertas}
+
+
+# ══════════════════════════════════════════════════════════════
+#  INFORMES PDF DE GESTIÓN (por puerto y consolidado nacional)
+# ══════════════════════════════════════════════════════════════
+def _slug(s: str) -> str:
+    """Nombre de archivo seguro (ASCII, sin espacios)."""
+    s = re.sub(r"[^A-Za-z0-9]+", "_", str(s)).strip("_")
+    return s or "puerto"
+
+
+def _pdf_response(contenido: bytes, filename: str) -> Response:
+    return Response(
+        content=bytes(contenido), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def _ultimo_periodo(db: Session, puerto_id: Optional[int] = None,
+                    ids: Optional[list] = None) -> tuple:
+    """(year, mes) del último período con datos; si no hay, el mes actual UTC."""
+    q = db.query(EscaneosDiarios.year, EscaneosDiarios.mes)
+    if puerto_id is not None:
+        q = q.filter(EscaneosDiarios.puerto_id == puerto_id)
+    elif ids is not None:
+        q = q.filter(EscaneosDiarios.puerto_id.in_(ids))
+    row = q.order_by(EscaneosDiarios.year.desc(),
+                     EscaneosDiarios.mes.desc()).first()
+    if row:
+        return int(row[0]), int(row[1])
+    now = datetime.utcnow()
+    return now.year, now.month
+
+
+def _generar_pdf_puerto(db, user, request, puerto_id, year, mes) -> Response:
+    if not (1 <= mes <= 12):
+        raise HTTPException(400, "Mes inválido")
+    if not can_view_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
+    puerto = db.query(Puerto).filter_by(id=puerto_id).first()
+    if not puerto:
+        raise HTTPException(404, "Puerto no encontrado")
+    datos = rep_datos.datos_puerto(db, puerto_id, year, mes)
+    contenido = rep_pdf.informe_puerto(datos, puerto.nombre_corto, year, mes,
+                                       actor_email=user.email)
+    record_audit(accion="reporte_pdf", entidad="reporte",
+                 entidad_id=f"puerto/{puerto_id}/{year}/{mes}", puerto_id=puerto_id,
+                 actor=user, request=request,
+                 detalle={"alcance": "puerto", "year": year, "mes": mes})
+    return _pdf_response(
+        contenido, f"PROTACTICS_{_slug(puerto.nombre_corto)}_{year}-{mes:02d}.pdf")
+
+
+def _generar_pdf_nacional(db, user, request, year, mes) -> Response:
+    if not (1 <= mes <= 12):
+        raise HTTPException(400, "Mes inválido")
+    ids = allowed_port_ids(user)
+    if ids is not None:      # solo admin / observador_global (alcance global)
+        raise HTTPException(403, "El informe nacional requiere alcance global")
+    datos = rep_datos.datos_nacional(db, year, mes, ids)   # ids None = todos
+    contenido = rep_pdf.informe_nacional(datos, year, mes, actor_email=user.email)
+    record_audit(accion="reporte_pdf", entidad="reporte",
+                 entidad_id=f"nacional/{year}/{mes}", actor=user, request=request,
+                 detalle={"alcance": "nacional", "year": year, "mes": mes})
+    return _pdf_response(contenido, f"PROTACTICS_nacional_{year}-{mes:02d}.pdf")
+
+
+@app.get("/reportes/pdf/puerto/{puerto_id}/{year}/{mes}")
+def informe_pdf_puerto(puerto_id: int, year: int, mes: int, request: Request,
+                       db: Session = Depends(get_db),
+                       user: User = Depends(get_current_user)):
+    """Informe PDF de gestión de un puerto-mes (respeta el alcance del usuario)."""
+    return _generar_pdf_puerto(db, user, request, puerto_id, year, mes)
+
+
+@app.get("/reportes/pdf/puerto/{puerto_id}")
+def informe_pdf_puerto_ultimo(puerto_id: int, request: Request,
+                              db: Session = Depends(get_db),
+                              user: User = Depends(get_current_user)):
+    """Igual que el anterior, para el último mes con datos del puerto."""
+    if not can_view_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
+    year, mes = _ultimo_periodo(db, puerto_id=puerto_id)
+    return _generar_pdf_puerto(db, user, request, puerto_id, year, mes)
+
+
+@app.get("/reportes/pdf/nacional/{year}/{mes}")
+def informe_pdf_nacional(year: int, mes: int, request: Request,
+                         db: Session = Depends(get_db),
+                         user: User = Depends(get_current_user)):
+    """Informe PDF consolidado nacional (solo alcance global)."""
+    return _generar_pdf_nacional(db, user, request, year, mes)
+
+
+@app.get("/reportes/pdf/nacional")
+def informe_pdf_nacional_ultimo(request: Request, db: Session = Depends(get_db),
+                                user: User = Depends(get_current_user)):
+    """Informe nacional del último mes con datos (solo alcance global)."""
+    if allowed_port_ids(user) is not None:
+        raise HTTPException(403, "El informe nacional requiere alcance global")
+    year, mes = _ultimo_periodo(db)
+    return _generar_pdf_nacional(db, user, request, year, mes)
 
 
 # ══════════════════════════════════════════════════════════════

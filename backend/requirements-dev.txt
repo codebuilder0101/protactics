@@ -3,3 +3,4 @@
 -r requirements.txt
 pytest==9.1.1
 httpx==0.28.1          # requerido por fastapi.testclient.TestClient
+pypdfium2==4.30.0      # render de PDF a imagen para las pruebas de snapshot
