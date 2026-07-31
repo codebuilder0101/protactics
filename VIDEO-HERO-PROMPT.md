@@ -2,6 +2,12 @@
 
 Prompt and specs for the 15-second loop that sits behind the landing-page headline.
 
+> **Status: installed.** A generated clip is live at `frontend/assets/hero-loop.mp4`.
+> Source was 1280×720, 24 fps, 15.07 s, 8.8 MB with a stray AAC track. Re-encoded to
+> **1.78 MB, 14.33 s, no audio**, with a 0.8 s crossfade closing the loop (the shot is a slow
+> push-in, so first and last frames did not match — the seam now measures 2.7/255 mean
+> difference, i.e. invisible). Keep the prompt below for regenerating or producing variants.
+
 ---
 
 ## Where the file goes
@@ -135,3 +141,19 @@ A 200 means the `HEAD` probe will succeed and the video will appear. Then load t
 check the one thing that matters: **the headline must still read cleanly.** If the text has gone
 muddy, the footage is too bright — regenerate darker, or drop `opacity` from `.22` to `.15` in
 [landing.html](frontend/landing.html).
+
+### Two gotchas when testing
+
+**Headless Chrome reports `prefers-reduced-motion: reduce`.** The video and the canvas radar both
+sit behind that guard, so a plain headless screenshot shows *neither* and looks like a broken
+deploy. Pass `--force-prefers-no-reduced-motion` to see what a real visitor sees:
+
+```bash
+chrome --headless=new --force-prefers-no-reduced-motion \
+       --autoplay-policy=no-user-gesture-required \
+       --window-size=1440,900 --screenshot=hero.png http://localhost:8000/
+```
+
+**The video does not load below 760 px viewport width.** That is deliberate — 1.78 MB for a
+hero a few centimetres tall, usually over mobile data, is a bad trade. The canvas animation
+still runs there.

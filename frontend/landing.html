@@ -590,8 +590,13 @@ const QUIETO = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* Video de fondo opcional. Se comprueba antes de crear el elemento: si el
      equipo publica /assets/hero-loop.mp4 se monta sobre el lienzo en modo
-     "screen"; si no existe, la página se queda solo con la animación. */
+     "screen"; si no existe, la página se queda solo con la animación.
+
+     En pantallas estrechas no se descarga: son ~1,8 MB para un héroe de
+     pocos centímetros, y ahí suele haber datos móviles de por medio. El
+     lienzo ya da movimiento por sí solo. */
   const VIDEO = '/assets/hero-loop.mp4';
+  if (innerWidth < 760) return;
   fetch(VIDEO, {method:'HEAD'})
     .then(r => {
       if (!r.ok) return;
