@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Política de privacidad — PROTACTICS</title>
+<meta name="description" content="Cómo PROTACTICS trata los datos personales de quienes usan la plataforma.">
+<link rel="icon" type="image/png" href="/assets/logo-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header>
+  <div class="hdr-inner">
+    <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+      <span class="logo-mark"><img src="/assets/logo-mark.png" width="72" height="72" alt="" aria-hidden="true"></span>
+      <span class="logo-txt">
+        <span class="logo-kicker">Sistema escáner portuario</span>
+        <span class="marca">PROTACTICS</span>
+        <span class="logo-sub">Tablero de control operacional · Colombia</span>
+      </span>
+    </a>
+    <div class="hdr-right">
+      <a class="btn btn-primary" href="/login">Iniciar sesión</a>
+    </div>
+  </div>
+</header>
+
+<main class="doc">
+  <div class="doc-head">
+    <div class="section-tag">Legal</div>
+    <h1>Política de privacidad</h1>
+    <p class="lead">
+      Qué datos personales recoge PROTACTICS, para qué los usa, cuánto los conserva
+      y cómo puedes ejercer tus derechos sobre ellos.
+    </p>
+    <div class="doc-fecha">Última actualización: 31 de julio de 2026</div>
+  </div>
+
+  <article class="doc-body glass">
+    <h3>1. Responsable del tratamiento</h3>
+    <p>
+      El responsable del tratamiento de los datos personales recogidos en esta plataforma es
+      <span class="pendiente">[[PENDIENTE: razón social]]</span>,
+      identificada con NIT <span class="pendiente">[[PENDIENTE: NIT]]</span>,
+      con domicilio en <span class="pendiente">[[PENDIENTE: dirección]]</span>.
+      Para cualquier asunto relacionado con esta política puedes escribir a
+      <span class="pendiente">[[PENDIENTE: correo de protección de datos]]</span>.
+    </p>
+
+    <h3>2. Marco legal</h3>
+    <p>
+      Esta política se rige por la Ley 1581 de 2012, el Decreto 1377 de 2013 y demás normas
+      que las modifiquen o reglamenten, en materia de protección de datos personales en
+      Colombia.
+    </p>
+
+    <h3>3. Qué datos tratamos</h3>
+    <h4>Datos de la cuenta</h4>
+    <ul>
+      <li><strong>Correo electrónico</strong> — identifica la cuenta y es el usuario de acceso.</li>
+      <li><strong>Nombre</strong> — para mostrar quién realiza cada acción.</li>
+      <li><strong>Contraseña</strong> — se guarda únicamente como resumen criptográfico con el
+          algoritmo <em>bcrypt</em>. No se almacena, ni es recuperable, en texto plano.</li>
+      <li><strong>Perfil y puerto asignado</strong> — determinan qué información puede ver cada
+          cuenta.</li>
+      <li><strong>Estado de aprobación</strong> — si la cuenta está pendiente, aprobada o rechazada.</li>
+    </ul>
+
+    <h4>Datos de sesión</h4>
+    <p>
+      Al iniciar sesión se crea un identificador de sesión aleatorio que se guarda en una
+      cookie propia, marcada <em>HttpOnly</em> (no accesible desde JavaScript) y
+      <em>SameSite=Lax</em>. Caduca a los <strong>7 días</strong> o al cerrar sesión.
+    </p>
+
+    <h4>Registro de auditoría</h4>
+    <p>
+      Por exigencia de trazabilidad de un sistema de control, cada acción relevante —inicios de
+      sesión con y sin éxito, cargas de reportes, aprobaciones de cuentas, ajustes de
+      disponibilidad— queda anotada junto con el correo de quien la realizó, la
+      <strong>dirección IP</strong>, el <strong>agente de usuario</strong> del navegador y la
+      fecha y hora.
+    </p>
+    <p>
+      Este registro es <strong>inmutable por diseño</strong>: solo admite inserciones y cada
+      entrada encadena un resumen criptográfico de la anterior, de modo que cualquier
+      alteración posterior resulta detectable. Es la garantía de que la trazabilidad no se
+      puede reescribir, y también el motivo por el que las entradas de auditoría no se pueden
+      borrar de forma individual.
+    </p>
+
+    <h4>Datos operacionales</h4>
+    <p>
+      Los reportes de escaneo que se cargan describen inspecciones de carga —contenedores,
+      fechas, horas y equipos—, no personas identificadas. Cuando un reporte incluya el
+      identificador del operador que realizó la inspección, ese dato recibe el mismo trato que
+      el resto de datos personales de esta política.
+    </p>
+
+    <h3>4. Para qué usamos los datos</h3>
+    <ul>
+      <li>Autenticar el acceso y aplicar los permisos de cada perfil.</li>
+      <li>Mostrar y calcular los indicadores de operación de los escáneres portuarios.</li>
+      <li>Mantener la trazabilidad de quién hizo qué dentro del sistema.</li>
+      <li>Atender solicitudes de acceso, soporte y ejercicio de derechos.</li>
+      <li>Proteger la plataforma frente a accesos no autorizados.</li>
+    </ul>
+    <p>
+      No usamos estos datos con fines publicitarios, no elaboramos perfiles comerciales y
+      <strong>no los vendemos ni los cedemos</strong> a terceros con esos fines.
+    </p>
+
+    <h3>5. Con quién se comparten</h3>
+    <p>
+      Los datos se comparten únicamente con el personal autorizado del responsable y con los
+      proveedores de infraestructura necesarios para operar la plataforma
+      (<span class="pendiente">[[PENDIENTE: proveedor de alojamiento]]</span>), que actúan como
+      encargados del tratamiento y solo pueden usarlos para prestar ese servicio.
+    </p>
+    <p>
+      También podrán entregarse a autoridades competentes cuando exista una solicitud legal que
+      lo exija.
+    </p>
+
+    <h3>6. Cuánto tiempo se conservan</h3>
+    <ul>
+      <li><strong>Cuenta</strong> — mientras esté activa y durante
+          <span class="pendiente">[[PENDIENTE: plazo tras la baja]]</span> después de su baja.</li>
+      <li><strong>Sesiones</strong> — 7 días como máximo; se eliminan al cerrar sesión.</li>
+      <li><strong>Auditoría</strong> — durante
+          <span class="pendiente">[[PENDIENTE: plazo de retención de auditoría]]</span>,
+          por su función de control.</li>
+      <li><strong>Reportes operacionales</strong> — mientras sean necesarios para el seguimiento
+          histórico de la operación portuaria.</li>
+    </ul>
+
+    <h3>7. Tus derechos</h3>
+    <p>Como titular de los datos puedes, en cualquier momento:</p>
+    <ul>
+      <li><strong>Conocer</strong> qué datos tuyos tratamos y cómo lo hacemos.</li>
+      <li><strong>Actualizar y rectificar</strong> los datos inexactos o incompletos.</li>
+      <li><strong>Solicitar prueba</strong> de la autorización otorgada.</li>
+      <li><strong>Revocar la autorización o solicitar la supresión</strong> cuando no exista un
+          deber legal o contractual que obligue a conservarlos. Las entradas del registro de
+          auditoría son la excepción, por su carácter inmutable y su finalidad de control.</li>
+      <li><strong>Presentar quejas</strong> ante la Superintendencia de Industria y Comercio.</li>
+    </ul>
+    <p>
+      Para ejercerlos, escribe a
+      <span class="pendiente">[[PENDIENTE: correo de protección de datos]]</span> indicando tu
+      solicitud y un medio de contacto. Responderemos dentro de los plazos que fija la ley:
+      quince (15) días hábiles para consultas y quince (15) días hábiles para reclamos,
+      prorrogables en los términos legales.
+    </p>
+
+    <h3>8. Seguridad</h3>
+    <p>
+      Aplicamos medidas técnicas y organizativas razonables: contraseñas guardadas solo como
+      resumen criptográfico, sesiones con cookie <em>HttpOnly</em> y caducidad, permisos por
+      perfil que limitan lo que cada cuenta puede ver, y registro inmutable de auditoría.
+      Ningún sistema es completamente infalible, pero trabajamos para que el riesgo sea el
+      menor posible.
+    </p>
+
+    <h3>9. Cookies</h3>
+    <p>
+      La plataforma usa una sola cookie, la de sesión, estrictamente necesaria para mantener el
+      acceso. <strong>No usamos cookies de analítica, publicidad ni seguimiento de terceros.</strong>
+    </p>
+
+    <h3>10. Cambios en esta política</h3>
+    <p>
+      Si esta política cambia, se publicará aquí la versión actualizada con su nueva fecha. Los
+      cambios sustanciales se comunicarán además a las cuentas activas.
+    </p>
+
+    <hr>
+    <p>
+      ¿Dudas sobre esta política? Escríbenos desde <a href="/contacto">Contacto</a>.
+      Consulta también los <a href="/terminos">términos de uso</a>.
+    </p>
+  </article>
+</main>
+
+<footer>
+  <div class="pie-inner">
+    <div class="pie-marca">
+      <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+        <span class="logo-mark"><img src="/assets/logo-mark.png" width="52" height="52" alt="" aria-hidden="true"></span>
+        <span class="logo-txt"><span class="marca">PROTACTICS</span></span>
+      </a>
+      <p>
+        Monitoreo operacional de los escáneres portuarios de Colombia: inspecciones,
+        horas pico y disponibilidad de cada equipo, en un solo tablero.
+      </p>
+    </div>
+    <div class="pie-col">
+      <h5>Plataforma</h5>
+      <ul>
+        <li><a href="/">Inicio</a></li>
+        <li><a href="/acerca">Acerca de</a></li>
+        <li><a href="/login">Iniciar sesión</a></li>
+      </ul>
+    </div>
+    <div class="pie-col">
+      <h5>Soporte</h5>
+      <ul>
+        <li><a href="/contacto">Contacto</a></li>
+        <li><a href="/contacto#acceso">Solicitar acceso</a></li>
+        <li><a href="/contacto#fallas">Reportar una falla</a></li>
+      </ul>
+    </div>
+    <div class="pie-col">
+      <h5>Legal</h5>
+      <ul>
+        <li><a href="/privacidad">Privacidad</a></li>
+        <li><a href="/terminos">Términos de uso</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="pie-base">
+    <span>© 2026 PROTACTICS · Sistema escáner portuario</span>
+    <span class="estado"><span class="punto"></span>Sistema operativo</span>
+    <span>Colombia</span>
+  </div>
+</footer>
+
+</body>
+</html>
