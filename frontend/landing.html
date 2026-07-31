@@ -39,8 +39,8 @@ body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-ser
 /* Líneas de barrido tipo monitor CRT sobre toda la página */
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
   background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,.012) 2px,rgba(0,229,255,.012) 4px);}
-/* Halo ambiental que da profundidad al fondo */
-body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:-2;
+/* Halo ambiental. Queda por detrás del fondo de puerto (-2) y de la malla (-1). */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:-3;
   background:radial-gradient(ellipse 80% 55% at 50% -10%,rgba(0,229,255,.13),transparent 62%),
              radial-gradient(ellipse 55% 45% at 88% 8%,rgba(255,215,0,.06),transparent 58%),
              radial-gradient(ellipse 60% 50% at 6% 42%,rgba(255,107,53,.05),transparent 60%);}
@@ -142,12 +142,16 @@ header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px
 /* ══════════ HÉROE ══════════ */
 .hero{position:relative;max-width:1140px;margin:0 auto;padding:6.5rem 2rem 4rem;text-align:center;z-index:1;}
 /* lienzo animado + hueco opcional para video de fondo */
-.hero-stage{position:absolute;top:-6rem;bottom:0;left:50%;width:100vw;transform:translateX(-50%);
-  z-index:-1;pointer-events:none;overflow:hidden;
-  -webkit-mask-image:radial-gradient(ellipse 60% 75% at 50% 42%,#000 30%,transparent 78%);
-          mask-image:radial-gradient(ellipse 60% 75% at 50% 42%,#000 30%,transparent 78%);}
-.hero-stage canvas,.hero-stage video{position:absolute;inset:0;width:100%;height:100%;}
-.hero-stage video{object-fit:cover;opacity:.22;mix-blend-mode:screen;filter:saturate(130%) contrast(115%);}
+/* Fondo único de toda la página: fijo al viewport, no recortado al héroe,
+   de modo que las secciones se desplazan por encima de la misma escena. */
+.bg-stage{position:fixed;inset:0;z-index:-2;pointer-events:none;overflow:hidden;}
+.bg-stage canvas,.bg-stage video{position:absolute;inset:0;width:100%;height:100%;}
+.bg-stage video{object-fit:cover;opacity:.20;mix-blend-mode:screen;filter:saturate(125%) contrast(112%);}
+/* Velo que oscurece arriba y abajo: sin él, el texto de las secciones
+   inferiores compite con las luces del muelle. */
+.bg-stage::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(5,8,15,.55) 0%,rgba(5,8,15,.12) 32%,
+             rgba(5,8,15,.34) 62%,rgba(5,8,15,.72) 100%);}
 
 .eyebrow{display:inline-flex;align-items:center;gap:.6rem;font-family:'IBM Plex Mono',monospace;font-size:.63rem;
   letter-spacing:.24em;color:var(--accent3);border:1px solid rgba(57,255,20,.28);border-radius:30px;
@@ -300,6 +304,12 @@ footer{margin-top:3.5rem;}
 </head>
 <body>
 
+<!-- Fondo de página: escena de puerto (video + lienzo), fijo tras todo -->
+<div class="bg-stage" aria-hidden="true">
+  <!-- El video se monta solo si existe /assets/hero-loop.mp4. -->
+  <canvas id="fx"></canvas>
+</div>
+
 <!-- Malla en perspectiva de fondo -->
 <div class="floor" aria-hidden="true"><i></i></div>
 
@@ -361,10 +371,6 @@ footer{margin-top:3.5rem;}
 
 <!-- HÉROE -->
 <div class="hero">
-  <div class="hero-stage" aria-hidden="true">
-    <!-- Hueco para video de fondo: si existe /assets/hero-loop.mp4 se monta solo. -->
-    <canvas id="fx"></canvas>
-  </div>
   <div class="eyebrow reveal"><span class="dot"></span>CONTROL DE ESCÁNERES PORTUARIOS EN VIVO</div>
   <h2 class="reveal">Toda la operación de los<br><b>escáneres portuarios</b> de Colombia en una sola pantalla</h2>
   <p class="lead reveal">
