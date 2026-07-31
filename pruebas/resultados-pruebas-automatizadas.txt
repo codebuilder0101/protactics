@@ -1,0 +1,13 @@
+.................................................................s...... [ 38%]
+..............sssssss................................................... [ 76%]
+.............................................                            [100%]
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_busqueda.py:180: archivo de referencia ausente
+SKIPPED [1] tests\test_identificadores.py:127: archivo de referencia ausente: REPORTE16062026ESCANER1PTOANTIOQUIA.xlsx
+SKIPPED [1] tests\test_identificadores.py:127: archivo de referencia ausente: REPORTE16062026ESCANER2PTOANTIOQUIA.xlsx
+SKIPPED [1] tests\test_identificadores.py:127: archivo de referencia ausente: REPORTE16062026ESCANERPTOAGUADULCE.xlsx
+SKIPPED [1] tests\test_identificadores.py:127: archivo de referencia ausente: REPORTE16062026ESCANERPTOBARRANQUILLA.xlsx
+SKIPPED [1] tests\test_identificadores.py:127: archivo de referencia ausente: REPORTE16062026ESCANERPTOSANTAMARTA.xlsx
+SKIPPED [1] tests\test_identificadores.py:127: archivo de referencia ausente: REPORTE16062026ESCANERPTOSPB.xlsx
+SKIPPED [1] tests\test_identificadores.py:127: archivo de referencia ausente: REPORTE16062026ESCANERPTOTCBUEN.xlsx
+181 passed, 8 skipped, 2156 warnings in 250.74s (0:04:10)
