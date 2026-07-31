@@ -2,11 +2,30 @@
 
 Prompt and specs for the 15-second loop that sits behind the landing-page headline.
 
-> **Status: installed.** A generated clip is live at `frontend/assets/hero-loop.mp4`.
-> Source was 1280×720, 24 fps, 15.07 s, 8.8 MB with a stray AAC track. Re-encoded to
-> **1.78 MB, 14.33 s, no audio**, with a 0.8 s crossfade closing the loop (the shot is a slow
-> push-in, so first and last frames did not match — the seam now measures 2.7/255 mean
-> difference, i.e. invisible). Keep the prompt below for regenerating or producing variants.
+> **Status: installed**, and now used as the background for the *whole* landing page — a fixed
+> full-viewport layer that all sections scroll over, not a hero-only panel.
+>
+> Source was 1280×720, 24 fps, 15.07 s, 8.8 MB with a stray AAC track. Current encode:
+> **1920×1080, 14.33 s, 6.44 MB, no audio**, denoised, lanczos-upscaled, lightly sharpened,
+> with a 0.8 s crossfade closing the loop (the shot is a slow push-in, so first and last frames
+> did not match — the seam now measures 2.7/255 mean difference, i.e. invisible).
+
+### On sharpness — read this before regenerating
+
+**The 720p source is the ceiling.** Measured with Laplacian variance on the same frame:
+
+| | sharpness |
+|---|---|
+| Source at native 720p scale | **507** |
+| Same content upscaled to fill a 1440 px viewport | **194** |
+| Current encode (denoise + lanczos + unsharp) | **283** |
+
+Stretching 1280 px across a 1440–2560 px viewport is what costs the detail; the re-encode wins
+about half of it back, and no encoding setting can recover the rest. An earlier CRF 27 pass made
+it visibly worse — dark night footage with grain is exactly what low bitrate smears.
+
+**If it still looks soft, regenerate the clip at 1920×1080 or higher.** That is the only real fix.
+The prompt below is resolution-agnostic; just ask your generator for 1080p+ output.
 
 ---
 
