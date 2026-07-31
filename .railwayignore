@@ -1,0 +1,36 @@
+# Qué NO subir a Railway con `railway up`.
+# Espeja .dockerignore: el contexto que viaja a la nube debe ser mínimo.
+# (`railway up` usa .gitignore + este archivo, NO .dockerignore.)
+
+# Datos y material de referencia — no se necesitan en producción
+reference/
+informes-prueba/
+pruebas/
+protactics_pgdata/
+*.pdf
+*.xls
+*.xlsx
+
+# Bases de datos locales
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Artefactos solo-locales
+run.ps1
+dashboard_puertos_colombia_standalone.html
+
+# Git / editor / SO
+.git/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

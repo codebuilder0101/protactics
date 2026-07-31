@@ -77,10 +77,10 @@ def detect_format(rows: list) -> str:
 
 
 def parse_file(rows: list, port_name: str, month_name: str,
-               filter_year: int, filter_month: int) -> dict:
+               filter_year: int, filter_month: int, anchor_day: int = None) -> dict:
     fmt = detect_format(rows)
     if fmt == "rapiscan":
-        return rapiscan.parse(rows, port_name, month_name, filter_year, filter_month)
+        return rapiscan.parse(rows, port_name, month_name, filter_year, filter_month, anchor_day)
     if fmt == "tcbuen":
-        return tcbuen.parse(rows, port_name, month_name, filter_year, filter_month)
-    return standard.parse(rows, port_name, month_name, filter_year, filter_month)
+        return tcbuen.parse(rows, port_name, month_name, filter_year, filter_month, anchor_day)
+    return standard.parse(rows, port_name, month_name, filter_year, filter_month, anchor_day)

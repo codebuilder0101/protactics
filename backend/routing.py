@@ -32,6 +32,10 @@ _STOP = {"puerto", "puertos", "soc", "sociedad", "portuaria", "regional",
 # de Buenaventura), abreviatura que no coincide con el oficial "SPR Buenaventura".
 _PORT_ALIASES = {
     "SPR Buenaventura": ("spb", "sprbun", "spbun"),
+    "Aguadulce":        ("spia",),                 # Soc. Portuaria Industrial de Aguadulce
+    "TCBUEN":           ("tcbuen", "tc buen"),     # "TC Buen" en los nombres de archivo
+    "SPR Barranquilla": ("baq",),
+    "Pto. Santa Marta": ("smr",),
 }
 
 

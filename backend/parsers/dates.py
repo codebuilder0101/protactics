@@ -9,35 +9,65 @@ La fecha se lee de forma LITERAL: no se aplica ninguna corrección de orden
 día/mes ni filtrado por período. El valor se interpreta tal como viene.
 """
 import re
+import unicodedata
 from datetime import datetime, timedelta
 
 _ISO_DT = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})")
 _ISO_D  = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})")
 _DMY    = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
 _HM     = re.compile(r"(\d{1,2}):(\d{2})")
-# Fecha en el nombre del archivo, p. ej. "... 04-06-2026.xlsx" = 4 de junio 2026.
+# Fecha numérica en el nombre del archivo, p. ej. "... 04-06-2026.xlsx" = 4-jun-2026.
 _FNAME  = re.compile(r"(\d{1,2})[-_.](\d{1,2})[-_.](\d{4})")
+# Fecha con nombre de mes, p. ej. "... 1-jul-26", "01-jul-2026", "2 jul 2026".
+_FNAME_MES = re.compile(r"(\d{1,2})[-_.\s]+([A-Za-zÁÉÍÓÚáéíóú]{3,10})[-_.\s]+(\d{2,4})")
+
+# Meses en español (e inglés por si acaso), comparados por sus 3 primeras letras
+# sin acentos: "jul", "ago", "set/sep"...
+_MESES = {
+    "ene": 1, "jan": 1, "feb": 2, "mar": 3, "abr": 4, "apr": 4, "may": 5,
+    "jun": 6, "jul": 7, "ago": 8, "aug": 8, "sep": 9, "set": 9, "oct": 10,
+    "nov": 11, "dic": 12, "dec": 12,
+}
+
+
+def _mes_num(token: str):
+    """Número de mes (1-12) a partir de un nombre de mes, o None."""
+    t = unicodedata.normalize("NFKD", token).encode("ascii", "ignore").decode()
+    return _MESES.get(t.lower()[:3])
 
 
 def period_from_filename(filename: str):
     """Devuelve (año, mes, día) leído del nombre del archivo, o None.
 
-    Asume formato DD-MM-YYYY (convención en español). Es la fuente más fiable de
-    la fecha del reporte, porque las fechas dentro del archivo a veces vienen con
-    el día y el mes intercambiados.
+    Es la fuente MÁS FIABLE de la fecha del reporte: las fechas dentro del archivo
+    a veces vienen con el día y el mes intercambiados o en formato US (M/D). Se
+    reconocen dos formas:
+      • con nombre de mes: "1-jul-26", "01-jul-2026", "2 jul 2026" (preferida);
+      • numérica DD-MM-YYYY: "04-06-2026" (con corrección si venía como MM-DD).
+    Los años de 2 dígitos se expanden a 20YY.
     """
     if not filename:
         return None
+
+    # 1) Nombre de mes (no ambiguo respecto al orden día/mes).
+    m = _FNAME_MES.search(filename)
+    if m:
+        day, month, y = int(m[1]), _mes_num(m[2]), int(m[3])
+        if month and 1 <= day <= 31:
+            if y < 100:
+                y += 2000
+            return y, month, day
+
+    # 2) Fecha numérica DD-MM-YYYY (o MM-DD si el "mes" no es válido).
     m = _FNAME.search(filename)
-    if not m:
-        return None
-    a, b, y = int(m[1]), int(m[2]), int(m[3])
-    day, month = a, b            # DD-MM por defecto
-    if month > 12 and day <= 12:  # si el "mes" no es válido, estaba como MM-DD
-        day, month = b, a
-    if not (1 <= month <= 12) or not (1 <= day <= 31):
-        return None
-    return y, month, day
+    if m:
+        a, b, y = int(m[1]), int(m[2]), int(m[3])
+        day, month = a, b
+        if month > 12 and day <= 12:
+            day, month = b, a
+        if 1 <= month <= 12 and 1 <= day <= 31:
+            return y, month, day
+    return None
 
 
 def to_ymdh(raw):

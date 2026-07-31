@@ -22,12 +22,18 @@ def _clean_operator(val):
 
 
 def parse(rows: list, port_name: str, month_name: str,
-          filter_year: int = None, filter_month: int = None) -> dict:
+          filter_year: int = None, filter_month: int = None,
+          anchor_day: int = None) -> dict:
     scans = [r for r in rows if not _is_empty(r.get("Fecha de creación"))]
 
     buckets = DayBuckets()
     for r in scans:
         y, mo, day, hour = to_ymdh(r.get("Fecha de creación"))
+        # `anchor_day` fija el día del reporte desde el nombre del archivo cuando
+        # las fechas del contenido están volteadas/US en el origen (solo la hora
+        # del contenido es fiable en ese caso).
+        if anchor_day is not None:
+            day = anchor_day
         op = _clean_operator(r.get("Nombre de Usuario"))
         buckets.add(day, hour, op)
 

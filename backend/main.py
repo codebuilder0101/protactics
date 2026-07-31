@@ -24,7 +24,7 @@ from models import (Puerto, EscaneosDiarios, EscaneosHorarios,
                     Operadores, Disponibilidad, ArchivosCargados, User, AuditLog,
                     Alerta, SLA, Infraccion, VentanaMantenimiento,
                     EscaneoFila, IndiceIdentificador)
-from parsers import parse_file, detect_format
+from parsers import parse_file, detect_format, period_from_filename
 import identificadores
 from routing import route_file, detect_period, detect_port
 from audit import record_audit, verify_chain
@@ -34,7 +34,7 @@ from auth import (router as auth_router, get_current_user, require_admin,
 import mantenimiento as mant
 import sla as sla_engine
 import anomalies
-from reportes import datos as rep_datos, pdf as rep_pdf
+from reportes import datos as rep_datos, pdf as rep_pdf, excel as rep_excel
 
 # ── App ────────────────────────────────────────────────────
 app = FastAPI(title="PROTACTICS API", version="1.0.0")
@@ -423,7 +423,21 @@ def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
     rows = rows_to_dicts(raw_rows) if fmt in ("standard", "tcbuen") else raw_rows
 
     month_name = MONTHS[mes - 1]
-    data = parse_file(rows, puerto.nombre_corto, month_name, year, mes)
+
+    # Ancla de día: si el nombre del archivo trae una fecha completa y el contenido
+    # está en OTRO mes (fechas volteadas o en formato US en el origen, p. ej. SPB
+    # exporta "01/07/2026" como 7-ene), se ancla todo el reporte al día del nombre.
+    # Cuando el contenido coincide con el mes del nombre no se ancla (se conserva
+    # el desglose por día real, por si el archivo abarcara varios días).
+    anchor_day = None
+    fname_period = period_from_filename(filename)
+    if fname_period:
+        c_y, c_m, _ = detect_period(raw_rows)
+        if c_m is not None and (c_y, c_m) != (fname_period[0], fname_period[1]):
+            anchor_day = fname_period[2]
+
+    data = parse_file(rows, puerto.nombre_corto, month_name, year, mes,
+                      anchor_day=anchor_day)
 
     if data["total_scans"] == 0:
         raise HTTPException(
@@ -573,7 +587,14 @@ async def upload_file(
     # arrastrar-y-soltar sobre la tarjeta), el archivo debe corresponder a ese
     # mes. Si su período dominante es otro, se rechaza con un error claro en vez
     # de archivar los datos en el mes equivocado.
-    det_y, det_m, _ = detect_period(raw_rows)
+    # El nombre del archivo es la fuente MÁS FIABLE del período (las fechas del
+    # contenido a veces vienen volteadas/US). Si el nombre trae fecha, manda; si
+    # no, se valida contra el período dominante del contenido.
+    fname_period = period_from_filename(file.filename)
+    if fname_period:
+        det_y, det_m = fname_period[0], fname_period[1]
+    else:
+        det_y, det_m, _ = detect_period(raw_rows)
     if det_y is not None and (det_y, det_m) != (year, mes):
         raise HTTPException(
             400,
@@ -1178,9 +1199,22 @@ def _slug(s: str) -> str:
     return s or "puerto"
 
 
-def _pdf_response(contenido: bytes, filename: str) -> Response:
+# Formato de informe → (builder por puerto, builder nacional, media type, extensión).
+# PDF y Excel comparten la MISMA agregación (rep_datos) y validaciones; solo cambia
+# el módulo que compone el archivo y las cabeceras de descarga.
+_INFORME_FORMATOS = {
+    "pdf": dict(media="application/pdf", ext="pdf",
+                puerto=rep_pdf.informe_puerto, nacional=rep_pdf.informe_nacional),
+    "excel": dict(
+        media="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ext="xlsx",
+        puerto=rep_excel.informe_puerto, nacional=rep_excel.informe_nacional),
+}
+
+
+def _informe_response(contenido: bytes, filename: str, media: str) -> Response:
     return Response(
-        content=bytes(contenido), media_type="application/pdf",
+        content=bytes(contenido), media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
@@ -1200,7 +1234,8 @@ def _ultimo_periodo(db: Session, puerto_id: Optional[int] = None,
     return now.year, now.month
 
 
-def _generar_pdf_puerto(db, user, request, puerto_id, year, mes) -> Response:
+def _generar_informe_puerto(db, user, request, puerto_id, year, mes,
+                            formato: str) -> Response:
     if not (1 <= mes <= 12):
         raise HTTPException(400, "Mes inválido")
     if not can_view_port(user, puerto_id):
@@ -1208,29 +1243,34 @@ def _generar_pdf_puerto(db, user, request, puerto_id, year, mes) -> Response:
     puerto = db.query(Puerto).filter_by(id=puerto_id).first()
     if not puerto:
         raise HTTPException(404, "Puerto no encontrado")
+    spec = _INFORME_FORMATOS[formato]
     datos = rep_datos.datos_puerto(db, puerto_id, year, mes)
-    contenido = rep_pdf.informe_puerto(datos, puerto.nombre_corto, year, mes,
-                                       actor_email=user.email)
-    record_audit(accion="reporte_pdf", entidad="reporte",
+    contenido = spec["puerto"](datos, puerto.nombre_corto, year, mes,
+                               actor_email=user.email)
+    record_audit(accion=f"reporte_{formato}", entidad="reporte",
                  entidad_id=f"puerto/{puerto_id}/{year}/{mes}", puerto_id=puerto_id,
                  actor=user, request=request,
-                 detalle={"alcance": "puerto", "year": year, "mes": mes})
-    return _pdf_response(
-        contenido, f"PROTACTICS_{_slug(puerto.nombre_corto)}_{year}-{mes:02d}.pdf")
+                 detalle={"alcance": "puerto", "formato": formato,
+                          "year": year, "mes": mes})
+    fn = f"PROTACTICS_{_slug(puerto.nombre_corto)}_{year}-{mes:02d}.{spec['ext']}"
+    return _informe_response(contenido, fn, spec["media"])
 
 
-def _generar_pdf_nacional(db, user, request, year, mes) -> Response:
+def _generar_informe_nacional(db, user, request, year, mes, formato: str) -> Response:
     if not (1 <= mes <= 12):
         raise HTTPException(400, "Mes inválido")
     ids = allowed_port_ids(user)
     if ids is not None:      # solo admin / observador_global (alcance global)
         raise HTTPException(403, "El informe nacional requiere alcance global")
+    spec = _INFORME_FORMATOS[formato]
     datos = rep_datos.datos_nacional(db, year, mes, ids)   # ids None = todos
-    contenido = rep_pdf.informe_nacional(datos, year, mes, actor_email=user.email)
-    record_audit(accion="reporte_pdf", entidad="reporte",
+    contenido = spec["nacional"](datos, year, mes, actor_email=user.email)
+    record_audit(accion=f"reporte_{formato}", entidad="reporte",
                  entidad_id=f"nacional/{year}/{mes}", actor=user, request=request,
-                 detalle={"alcance": "nacional", "year": year, "mes": mes})
-    return _pdf_response(contenido, f"PROTACTICS_nacional_{year}-{mes:02d}.pdf")
+                 detalle={"alcance": "nacional", "formato": formato,
+                          "year": year, "mes": mes})
+    fn = f"PROTACTICS_nacional_{year}-{mes:02d}.{spec['ext']}"
+    return _informe_response(contenido, fn, spec["media"])
 
 
 @app.get("/reportes/pdf/puerto/{puerto_id}/{year}/{mes}")
@@ -1238,7 +1278,7 @@ def informe_pdf_puerto(puerto_id: int, year: int, mes: int, request: Request,
                        db: Session = Depends(get_db),
                        user: User = Depends(get_current_user)):
     """Informe PDF de gestión de un puerto-mes (respeta el alcance del usuario)."""
-    return _generar_pdf_puerto(db, user, request, puerto_id, year, mes)
+    return _generar_informe_puerto(db, user, request, puerto_id, year, mes, "pdf")
 
 
 @app.get("/reportes/pdf/puerto/{puerto_id}")
@@ -1249,7 +1289,7 @@ def informe_pdf_puerto_ultimo(puerto_id: int, request: Request,
     if not can_view_port(user, puerto_id):
         raise HTTPException(403, "No tienes permiso para ver este puerto")
     year, mes = _ultimo_periodo(db, puerto_id=puerto_id)
-    return _generar_pdf_puerto(db, user, request, puerto_id, year, mes)
+    return _generar_informe_puerto(db, user, request, puerto_id, year, mes, "pdf")
 
 
 @app.get("/reportes/pdf/nacional/{year}/{mes}")
@@ -1257,7 +1297,7 @@ def informe_pdf_nacional(year: int, mes: int, request: Request,
                          db: Session = Depends(get_db),
                          user: User = Depends(get_current_user)):
     """Informe PDF consolidado nacional (solo alcance global)."""
-    return _generar_pdf_nacional(db, user, request, year, mes)
+    return _generar_informe_nacional(db, user, request, year, mes, "pdf")
 
 
 @app.get("/reportes/pdf/nacional")
@@ -1267,7 +1307,45 @@ def informe_pdf_nacional_ultimo(request: Request, db: Session = Depends(get_db),
     if allowed_port_ids(user) is not None:
         raise HTTPException(403, "El informe nacional requiere alcance global")
     year, mes = _ultimo_periodo(db)
-    return _generar_pdf_nacional(db, user, request, year, mes)
+    return _generar_informe_nacional(db, user, request, year, mes, "pdf")
+
+
+# ── Anexo de datos en Excel (mismos datos y permisos que el PDF) ──
+@app.get("/reportes/excel/puerto/{puerto_id}/{year}/{mes}")
+def informe_excel_puerto(puerto_id: int, year: int, mes: int, request: Request,
+                         db: Session = Depends(get_db),
+                         user: User = Depends(get_current_user)):
+    """Anexo Excel de gestión de un puerto-mes (respeta el alcance del usuario)."""
+    return _generar_informe_puerto(db, user, request, puerto_id, year, mes, "excel")
+
+
+@app.get("/reportes/excel/puerto/{puerto_id}")
+def informe_excel_puerto_ultimo(puerto_id: int, request: Request,
+                                db: Session = Depends(get_db),
+                                user: User = Depends(get_current_user)):
+    """Igual que el anterior, para el último mes con datos del puerto."""
+    if not can_view_port(user, puerto_id):
+        raise HTTPException(403, "No tienes permiso para ver este puerto")
+    year, mes = _ultimo_periodo(db, puerto_id=puerto_id)
+    return _generar_informe_puerto(db, user, request, puerto_id, year, mes, "excel")
+
+
+@app.get("/reportes/excel/nacional/{year}/{mes}")
+def informe_excel_nacional(year: int, mes: int, request: Request,
+                           db: Session = Depends(get_db),
+                           user: User = Depends(get_current_user)):
+    """Anexo Excel consolidado nacional (solo alcance global)."""
+    return _generar_informe_nacional(db, user, request, year, mes, "excel")
+
+
+@app.get("/reportes/excel/nacional")
+def informe_excel_nacional_ultimo(request: Request, db: Session = Depends(get_db),
+                                  user: User = Depends(get_current_user)):
+    """Anexo Excel nacional del último mes con datos (solo alcance global)."""
+    if allowed_port_ids(user) is not None:
+        raise HTTPException(403, "El informe nacional requiere alcance global")
+    year, mes = _ultimo_periodo(db)
+    return _generar_informe_nacional(db, user, request, year, mes, "excel")
 
 
 # ══════════════════════════════════════════════════════════════

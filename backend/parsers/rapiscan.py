@@ -46,7 +46,8 @@ def _find_header(rows) -> int:
 
 
 def parse(rows: list, port_name: str, month_name: str,
-          filter_year: int = None, filter_month: int = None) -> dict:
+          filter_year: int = None, filter_month: int = None,
+          anchor_day: int = None) -> dict:
 
     # Localizar la fila de encabezado del detalle (fecha + columnas de detalle).
     header_idx = _find_header(rows)
@@ -69,7 +70,11 @@ def parse(rows: list, port_name: str, month_name: str,
                 if raw is None or str(raw).strip() == "":
                     continue
                 y, mo, day, hour = to_ymdh(raw)
-                if day is None:
+                # Día fiable desde el nombre del archivo si el contenido viene
+                # con la fecha volteada/US; si no, se exige un día válido.
+                if anchor_day is not None:
+                    day = anchor_day
+                elif day is None:
                     continue
                 op = None
                 if user_col is not None and len(vals) > user_col:
