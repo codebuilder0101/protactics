@@ -6,107 +6,256 @@
 <title>Iniciar sesión — PROTACTICS</title>
 <link rel="icon" type="image/png" href="/assets/logo-mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@200;300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#05080f; --panel:#0b1120; --border:#1a2d4a;
-  --accent:#00e5ff; --accent3:#39ff14; --accent4:#ffd700; --danger:#ff5a5a;
+  --accent:#00e5ff; --accent2:#ff6b35; --accent3:#39ff14; --accent4:#ffd700; --danger:#ff5a5a;
   --text:#c8d8e8; --dim:#4a6580;
+  --glass:linear-gradient(155deg,rgba(24,40,66,.55) 0%,rgba(9,15,28,.4) 55%,rgba(6,11,21,.58) 100%);
+  --glass-brd:rgba(120,190,235,.16);
+  --sh-2:0 2px 4px rgba(0,0,0,.45), 0 12px 28px rgba(0,0,0,.45), 0 28px 60px rgba(0,0,0,.35);
+  --sh-3:0 4px 8px rgba(0,0,0,.5), 0 22px 46px rgba(0,0,0,.55), 0 48px 90px rgba(0,0,0,.45);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;
-  min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem;overflow-x:hidden;}
+  min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+/* Líneas de barrido tipo monitor, igual que en la portada */
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
   background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,.012) 2px,rgba(0,229,255,.012) 4px);}
-body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:-1;
-  background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,229,255,.10),transparent 60%);}
 a{color:var(--accent);text-decoration:none;}
-a:hover{text-decoration:underline;}
+svg{display:block;}
 
-.brand{display:flex;align-items:center;gap:.7rem;margin-bottom:1.6rem;}
-.brand-mark{width:44px;height:44px;flex:none;border-radius:50%;object-fit:cover;display:block;box-shadow:0 0 0 1px rgba(0,229,255,.35), 0 0 18px rgba(0,229,255,.28);}
-.brand h1{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:.1em;color:var(--accent);text-shadow:0 0 18px rgba(0,229,255,.4);line-height:1;}
-.brand h1 span{display:block;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:var(--dim);letter-spacing:.2em;margin-top:3px;}
-.brand .gold{color:var(--accent4);}
+/* ══════════ ESTRUCTURA EN DOS MITADES ══════════ */
+/* Fila explícita en 1fr: ambas mitades ocupan el alto completo aunque el
+   formulario sea más corto que la ventana. */
+.split{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr;min-height:100vh;}
 
-.card{width:100%;max-width:400px;background:linear-gradient(160deg,rgba(11,17,32,.96),rgba(7,13,25,.9));
-  border:1px solid var(--border);border-radius:14px;padding:2.2rem;position:relative;overflow:hidden;
-  box-shadow:0 20px 60px rgba(0,0,0,.5);}
-.card::before{content:'';position:absolute;left:0;top:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);}
-.card h2{font-family:'Bebas Neue',sans-serif;font-size:1.8rem;letter-spacing:.04em;color:#eaf6ff;margin-bottom:.3rem;}
-.card .sub{font-size:.82rem;color:var(--dim);margin-bottom:1.6rem;}
+/* ── Mitad izquierda: el formulario ── */
+.pane-form{position:relative;display:flex;flex-direction:column;justify-content:center;
+  padding:2.5rem clamp(1.5rem,5vw,4.5rem);}
+.pane-form::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:-1;
+  background:radial-gradient(ellipse 75% 55% at 30% 0%,rgba(0,229,255,.12),transparent 62%),
+             radial-gradient(ellipse 60% 50% at 10% 90%,rgba(255,107,53,.05),transparent 60%);}
+.form-wrap{width:100%;max-width:400px;margin:0 auto;}
 
-label{display:block;font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--dim);margin:1rem 0 .4rem;}
-input{width:100%;background:#060b15;border:1px solid var(--border);border-radius:8px;padding:.75rem .9rem;
-  color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:.95rem;transition:all .18s;}
-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.12);}
+.brand{display:flex;align-items:center;gap:1rem;margin-bottom:2.6rem;}
+.brand-mark{position:relative;width:60px;height:60px;flex:none;border-radius:50%;
+  background:radial-gradient(circle at 34% 26%,rgba(0,229,255,.22),rgba(4,9,18,.96) 62%);
+  border:1px solid rgba(0,229,255,.34);
+  box-shadow:0 1px 0 rgba(180,240,255,.4) inset, var(--sh-2), 0 0 32px rgba(0,229,255,.22);}
+.brand-mark img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;
+  filter:saturate(125%) contrast(108%);}
+/* anillo que orbita la marca */
+.brand-mark::after{content:'';position:absolute;inset:-6px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(from 0deg,transparent 0deg,rgba(0,229,255,.6) 44deg,rgba(255,215,0,.3) 78deg,transparent 128deg);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 2px));
+          mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 2px));
+  animation:spin 6s linear infinite;opacity:.9;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.brand-txt{min-width:0;}
+.brand-kicker{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:.26em;
+  color:var(--dim);text-transform:uppercase;display:block;margin-bottom:.2rem;}
+.brand h1{font-family:'Bebas Neue',sans-serif;font-size:2rem;line-height:.9;letter-spacing:.09em;
+  background:linear-gradient(96deg,#eaf6ff 0%,var(--accent) 38%,var(--accent4) 92%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
+
+.pane-form h2{font-family:'Bebas Neue',sans-serif;font-size:2.4rem;letter-spacing:.03em;
+  color:#eaf6ff;margin-bottom:.35rem;text-shadow:0 2px 0 rgba(0,0,0,.5);}
+.pane-form .sub{font-size:.88rem;color:var(--dim);font-weight:300;margin-bottom:2rem;}
+
+label{display:block;font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim);margin:1.1rem 0 .45rem;}
+/* Campo sobre vidrio, con el icono embutido a la izquierda */
+.field{position:relative;}
+.field svg{position:absolute;left:.95rem;top:50%;transform:translateY(-50%);width:16px;height:16px;
+  fill:none;stroke:var(--dim);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;
+  transition:stroke .2s;pointer-events:none;}
+input{width:100%;background:rgba(6,11,21,.75);border:1px solid var(--glass-brd);border-radius:10px;
+  padding:.85rem .9rem .85rem 2.7rem;color:var(--text);font-family:'IBM Plex Sans',sans-serif;
+  font-size:.95rem;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 2px 6px rgba(0,0,0,.35);
+  transition:border-color .2s, box-shadow .2s;}
+input::placeholder{color:#38506b;}
+input:focus{outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(0,229,255,.14), 0 0 22px rgba(0,229,255,.18);}
+.field:focus-within svg{stroke:var(--accent);}
 input.invalid{border-color:var(--danger);}
 .field-err{color:var(--danger);font-size:.72rem;margin-top:.35rem;min-height:.9rem;font-weight:300;}
 
-.btn-submit{width:100%;margin-top:1.4rem;background:linear-gradient(135deg,var(--accent),#0bb5cc);color:#02151b;
-  font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;
-  border:none;border-radius:8px;padding:.85rem;cursor:pointer;transition:all .18s;box-shadow:0 0 22px rgba(0,229,255,.25);
-  display:flex;align-items:center;justify-content:center;gap:.6rem;}
-.btn-submit:hover:not(:disabled){box-shadow:0 0 32px rgba(0,229,255,.5);transform:translateY(-1px);}
+.btn-submit{width:100%;margin-top:1.6rem;color:#02151b;
+  background:linear-gradient(140deg,#7df5ff 0%,var(--accent) 42%,#079fb8 100%);
+  font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:.78rem;letter-spacing:.1em;
+  text-transform:uppercase;border:none;border-radius:11px;padding:.95rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:.6rem;
+  box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 -6px 14px rgba(0,90,110,.45) inset,
+             0 6px 16px rgba(0,0,0,.45), 0 0 26px rgba(0,229,255,.32);
+  transition:transform .2s cubic-bezier(.2,.8,.25,1), box-shadow .2s;}
+.btn-submit:hover:not(:disabled){transform:translateY(-2px);
+  box-shadow:0 1px 0 rgba(255,255,255,.7) inset, 0 -6px 14px rgba(0,90,110,.45) inset,
+             0 12px 26px rgba(0,0,0,.5), 0 0 40px rgba(0,229,255,.6);}
+.btn-submit:active:not(:disabled){transform:translateY(1px) scale(.99);}
 .btn-submit:disabled{opacity:.6;cursor:not-allowed;}
-.spinner{width:14px;height:14px;border:2px solid rgba(2,21,27,.3);border-top-color:#02151b;border-radius:50%;
-  animation:spin .7s linear infinite;display:none;}
-@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:14px;height:14px;border:2px solid rgba(2,21,27,.3);border-top-color:#02151b;
+  border-radius:50%;animation:spin .7s linear infinite;display:none;}
 
 .form-err{background:rgba(255,90,90,.08);border:1px solid rgba(255,90,90,.35);color:#ffb3b3;
-  border-radius:8px;padding:.7rem .9rem;font-size:.82rem;margin-bottom:1rem;display:none;}
+  border-radius:10px;padding:.75rem .9rem;font-size:.82rem;margin-bottom:1rem;display:none;}
 .form-err.show{display:block;}
 
-.alt{text-align:center;margin-top:1.5rem;font-size:.85rem;color:var(--dim);}
-.back{margin-top:1.3rem;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.1em;}
-.back a{color:var(--dim);}
+.back{margin-top:2rem;font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.12em;}
+.back a{color:var(--dim);display:inline-flex;align-items:center;gap:.4rem;transition:color .2s;}
+.back a:hover{color:var(--accent);}
+
+/* ── Mitad derecha: la fotografía ── */
+.pane-img{position:relative;overflow:hidden;background:#04070d;}
+/* Absoluta a propósito: en flujo, su altura intrínseca (1204px) estiraba la
+   fila del grid y empujaba el rótulo por debajo del pliegue. */
+.pane-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;
+  filter:saturate(105%) contrast(104%);}
+/* Velo que tiñe la foto hacia el cian de la marca y asienta el texto encima */
+.pane-img::before{content:'';position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(90deg,rgba(5,8,15,.96) 0%,rgba(5,8,15,.5) 22%,rgba(5,8,15,.08) 55%),
+             linear-gradient(0deg,rgba(3,10,20,.92) 0%,rgba(3,10,20,.15) 45%,transparent 70%),
+             radial-gradient(ellipse 70% 60% at 70% 30%,rgba(0,229,255,.14),transparent 65%);}
+/* Barrido lento: recuerda el haz del escáner de la portada */
+.pane-img::after{content:'';position:absolute;left:0;right:0;height:38%;z-index:2;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(0,229,255,.09) 78%,rgba(140,247,255,.3));
+  animation:barrido 7s linear infinite;}
+@keyframes barrido{0%{top:-38%}100%{top:100%}}
+
+.img-txt{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:3rem clamp(1.5rem,4vw,3.5rem);}
+.img-txt .eyebrow{display:inline-flex;align-items:center;gap:.55rem;font-family:'IBM Plex Mono',monospace;
+  font-size:.6rem;letter-spacing:.22em;color:var(--accent3);border:1px solid rgba(57,255,20,.28);
+  border-radius:30px;padding:.45rem 1rem;margin-bottom:1.2rem;background:rgba(57,255,20,.06);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+.img-txt .dot{width:7px;height:7px;border-radius:50%;background:var(--accent3);
+  box-shadow:0 0 10px var(--accent3);animation:pulse 1.6s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.65)}}
+.img-txt h3{font-family:'Bebas Neue',sans-serif;font-size:clamp(1.8rem,2.6vw,2.6rem);line-height:1;
+  letter-spacing:.02em;color:#eaf6ff;text-shadow:0 2px 8px rgba(0,0,0,.8);margin-bottom:.7rem;}
+.img-txt p{font-size:.92rem;font-weight:300;line-height:1.6;color:#b6cde0;max-width:44ch;
+  text-shadow:0 1px 6px rgba(0,0,0,.7);}
+/* Cifras de cobertura sobre la foto */
+.img-stats{display:flex;gap:2.2rem;margin-top:1.8rem;}
+.img-stats .v{font-family:'Bebas Neue',sans-serif;font-size:1.9rem;line-height:1;color:var(--accent);
+  text-shadow:0 0 18px rgba(0,229,255,.5);}
+.img-stats .l{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:.14em;
+  color:#8fa9c2;text-transform:uppercase;margin-top:.35rem;}
+/* Crédito de la fotografía (licencia Unsplash, atribución no exigida) */
+.credito{position:absolute;top:1rem;right:1.1rem;z-index:3;font-family:'IBM Plex Mono',monospace;
+  font-size:.5rem;letter-spacing:.1em;color:rgba(200,216,232,.45);text-transform:uppercase;}
+.credito a{color:inherit;}
+.credito a:hover{color:var(--accent);}
+
+/* ══════════ RESPONSIVO ══════════ */
+@media(max-width:920px){
+  /* La foto pasa arriba como banda; el formulario debajo. */
+  .split{grid-template-columns:1fr;grid-template-rows:auto auto;min-height:0;}
+  .pane-img{order:-1;height:34vh;min-height:220px;}
+  .img-txt{padding:1.5rem;}
+  .img-txt h3{font-size:1.5rem;}
+  .img-txt p,.img-stats{display:none;}
+  .pane-form{padding:2.5rem 1.5rem 3rem;min-height:66vh;}
+}
+@media(max-width:420px){
+  .pane-img{height:26vh;min-height:170px;}
+  .brand h1{font-size:1.7rem;}
+  .brand-mark{width:52px;height:52px;}
+  .pane-form h2{font-size:2rem;}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.01ms!important;}
+}
 </style>
 </head>
 <body>
 
-<div class="brand">
-  <img class="brand-mark" src="/assets/logo-mark.png" alt="" aria-hidden="true">
-  <h1>PROTACTICS <span class="gold">SISTEMA ESCÁNER PORTUARIO</span></h1>
+<div class="split">
+
+  <!-- FORMULARIO -->
+  <div class="pane-form">
+    <div class="form-wrap">
+      <a class="brand" href="/" aria-label="PROTACTICS — inicio">
+        <span class="brand-mark">
+          <img src="/assets/logo-mark.png" width="60" height="60" alt="" aria-hidden="true">
+        </span>
+        <span class="brand-txt">
+          <span class="brand-kicker">Sistema escáner portuario</span>
+          <h1>PROTACTICS</h1>
+        </span>
+      </a>
+
+      <h2>Iniciar sesión</h2>
+      <div class="sub">Accede al tablero de control operacional.</div>
+
+      <div class="form-err" id="formErr"></div>
+
+      <form id="loginForm" novalidate>
+        <label for="email">Correo electrónico</label>
+        <div class="field">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="2.8" y="5" width="18.4" height="14" rx="2.4"/>
+            <path d="m3.4 6.6 8.6 6 8.6-6"/>
+          </svg>
+          <input id="email" name="email" type="email" autocomplete="username"
+                 placeholder="tucorreo@dominio.com" required>
+        </div>
+        <div class="field-err" id="emailErr"></div>
+
+        <label for="password">Contraseña</label>
+        <div class="field">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="10.2" width="16" height="10.4" rx="2.4"/>
+            <path d="M7.8 10.2V7.6a4.2 4.2 0 0 1 8.4 0v2.6"/>
+            <circle cx="12" cy="15.4" r="1.5"/>
+          </svg>
+          <input id="password" name="password" type="password" autocomplete="current-password"
+                 placeholder="••••••••" required>
+        </div>
+        <div class="field-err" id="passwordErr"></div>
+
+        <button class="btn-submit" id="submitBtn" type="submit">
+          <span class="spinner" id="spinner"></span>
+          <span id="btnLabel">Entrar</span>
+        </button>
+      </form>
+
+      <div class="back">
+        <a href="/">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5M11 18 5 12l6-6"/>
+          </svg>
+          Volver al inicio
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOTOGRAFÍA -->
+  <div class="pane-img">
+    <img src="/assets/login-puerto.jpg" alt="Terminal de contenedores al anochecer, con grúas pórtico operando.">
+    <div class="credito">
+      Foto: <a href="https://unsplash.com/photos/ZAk0UY8xYh0" target="_blank" rel="noopener">Winston Chen · Unsplash</a>
+    </div>
+    <div class="img-txt">
+      <div class="eyebrow"><span class="dot"></span>OPERACIÓN EN VIVO</div>
+      <h3>Cada contenedor,<br>cada escáner, un solo lugar</h3>
+      <p>
+        Los siete escáneres portuarios del país reportan aquí: inspecciones del día,
+        horas pico y disponibilidad de cada equipo.
+      </p>
+      <div class="img-stats">
+        <div><div class="v">7</div><div class="l">Escáneres</div></div>
+        <div><div class="v">4</div><div class="l">Departamentos</div></div>
+        <div><div class="v">24/7</div><div class="l">Al día</div></div>
+      </div>
+    </div>
+  </div>
+
 </div>
-
-<div class="card">
-  <h2>Iniciar sesión</h2>
-  <div class="sub">Accede al tablero de control operacional</div>
-
-  <div class="form-err" id="formErr"></div>
-
-  <form id="loginForm" novalidate>
-    <label for="email">Correo electrónico</label>
-    <input id="email" name="email" type="email" autocomplete="username" placeholder="tucorreo@dominio.com" required>
-    <div class="field-err" id="emailErr"></div>
-
-    <label for="password">Contraseña</label>
-    <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
-    <div class="field-err" id="passwordErr"></div>
-
-    <button class="btn-submit" id="submitBtn" type="submit">
-      <span class="spinner" id="spinner"></span>
-      <span id="btnLabel">Entrar</span>
-    </button>
-  </form>
-
-  <div class="alt">¿No tienes cuenta? <a href="/register">Regístrate</a></div>
-</div>
-
-<div class="back"><a href="/">← Volver al inicio</a></div>
-
-<script>
-// Sitio privado: oculta el enlace de registro si está deshabilitado.
-fetch('/api/config')
-  .then(r => r.ok ? r.json() : null)
-  .then(c => {
-    if (c && c.registration_enabled) return;
-    document.querySelectorAll('a[href="/register"]')
-      .forEach(e => { (e.closest('.alt') || e).style.display = 'none'; });
-  })
-  .catch(()=>{});
-</script>
 
 <script>
 const form = document.getElementById('loginForm');

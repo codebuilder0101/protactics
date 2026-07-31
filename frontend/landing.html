@@ -55,8 +55,7 @@ svg{display:block;}
 @keyframes floorRun{to{background-position:0 46px,46px 0;}}
 
 /* ══════════ ENCABEZADO ══════════ */
-header{position:sticky;top:0;z-index:200;height:96px;padding:0 2.2rem;
-  display:flex;align-items:center;justify-content:space-between;gap:1.2rem;
+header{position:sticky;top:0;z-index:200;height:96px;
   background:linear-gradient(180deg,rgba(8,20,36,.9) 0%,rgba(5,8,15,.62) 100%);
   border-bottom:1px solid rgba(120,190,235,.14);
   backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);
@@ -64,6 +63,10 @@ header{position:sticky;top:0;z-index:200;height:96px;padding:0 2.2rem;
 /* filo luminoso inferior */
 header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
   background:linear-gradient(90deg,transparent,rgba(0,229,255,.65) 22%,rgba(255,215,0,.4) 55%,transparent);opacity:.75;}
+/* Misma caja que las secciones (1140px + 2rem) para que el logo y el boton
+   queden a plomo con el contenido en vez de pegados a los bordes. */
+.hdr-inner{max-width:1140px;height:100%;margin:0 auto;padding:0 2rem;
+  display:flex;align-items:center;justify-content:space-between;gap:1.2rem;}
 
 .logo{display:flex;align-items:center;gap:1.15rem;min-width:0;}
 /* Medallón 3D: el emblema de radar montado sobre un disco de vidrio biselado */
@@ -261,7 +264,8 @@ footer{position:relative;z-index:1;border-top:1px solid rgba(120,190,235,.12);ma
   .grid{grid-template-columns:repeat(2,1fr);}
 }
 @media(max-width:760px){
-  header{padding:0 1.1rem;height:80px;}
+  header{height:80px;}
+  .hdr-inner{padding:0 1.2rem;}
   .logo{gap:.85rem;}
   .logo-mark{width:58px;height:58px;}
   .logo-txt h1{font-size:1.85rem;}
@@ -274,7 +278,8 @@ footer{position:relative;z-index:1;border-top:1px solid rgba(120,190,235,.12);ma
   .grid,.stats{grid-template-columns:1fr;}
   /* Ambos botones visibles: se compactan y se ocultan los rótulos secundarios
      del logo para que entren sin desbordar en pantallas angostas. */
-  header{padding:0 .8rem;height:72px;}
+  header{height:72px;}
+  .hdr-inner{padding:0 .9rem;}
   .logo-mark{width:46px;height:46px;}
   .logo-kicker,.logo-sub{display:none;}
   .logo-txt h1{font-size:1.6rem;}
@@ -333,20 +338,21 @@ footer{position:relative;z-index:1;border-top:1px solid rgba(120,190,235,.12);ma
 </svg>
 
 <header>
-  <a class="logo" href="/" aria-label="PROTACTICS — inicio">
-    <span class="logo-mark">
-      <img src="/assets/logo-mark.png" width="72" height="72" alt="" aria-hidden="true">
-      <span class="sweep"></span>
-    </span>
-    <span class="logo-txt">
-      <span class="logo-kicker">Sistema escáner portuario</span>
-      <h1>PROTACTICS</h1>
-      <span class="logo-sub">Tablero de control operacional · Colombia</span>
-    </span>
-  </a>
-  <div class="hdr-right" id="hdrRight">
-    <a class="btn btn-primary" href="/login">Iniciar sesión</a>
-    <a class="btn btn-ghost" href="/register">Registrarse</a>
+  <div class="hdr-inner">
+    <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+      <span class="logo-mark">
+        <img src="/assets/logo-mark.png" width="72" height="72" alt="" aria-hidden="true">
+        <span class="sweep"></span>
+      </span>
+      <span class="logo-txt">
+        <span class="logo-kicker">Sistema escáner portuario</span>
+        <h1>PROTACTICS</h1>
+        <span class="logo-sub">Tablero de control operacional · Colombia</span>
+      </span>
+    </a>
+    <div class="hdr-right" id="hdrRight">
+      <a class="btn btn-primary" href="/login">Iniciar sesión</a>
+    </div>
   </div>
 </header>
 
@@ -365,8 +371,7 @@ footer{position:relative;z-index:1;border-top:1px solid rgba(120,190,235,.12);ma
     persiguiendo reportes.
   </p>
   <div class="hero-cta reveal">
-    <a class="btn btn-primary btn-lg" href="/register">Crear cuenta gratis <svg><use href="#i-arrow"/></svg></a>
-    <a class="btn btn-ghost btn-lg" href="/login">Ya tengo cuenta</a>
+    <a class="btn btn-primary btn-lg" href="/login">Entrar al tablero <svg><use href="#i-arrow"/></svg></a>
   </div>
 </div>
 
@@ -446,9 +451,9 @@ footer{position:relative;z-index:1;border-top:1px solid rgba(120,190,235,.12);ma
 <!-- LLAMADO FINAL -->
 <div class="cta-band">
   <div class="cta-inner glass reveal">
-    <h3>Empieza hoy mismo</h3>
-    <p>Crea tu cuenta y entra al tablero en un minuto.</p>
-    <a class="btn btn-primary btn-lg" href="/register">Crear mi cuenta <svg><use href="#i-arrow"/></svg></a>
+    <h3>Entra al tablero</h3>
+    <p>Accede con la cuenta que te asignó tu administrador.</p>
+    <a class="btn btn-primary btn-lg" href="/login">Iniciar sesión <svg><use href="#i-arrow"/></svg></a>
   </div>
 </div>
 
@@ -626,16 +631,6 @@ fetch('/api/auth/me', {credentials:'include'})
     if (!u) return;
     document.getElementById('hdrRight').innerHTML =
       '<a class="btn btn-primary" href="/dashboard">Ir al panel <svg><use href="#i-arrow"/></svg></a>';
-  })
-  .catch(()=>{});
-
-/* ── Sitio privado: oculta los botones de registro si está deshabilitado. ── */
-fetch('/api/config')
-  .then(r => r.ok ? r.json() : null)
-  .then(c => {
-    if (c && c.registration_enabled) return;
-    document.querySelectorAll('a[href="/register"]')
-      .forEach(e => { (e.closest('.alt') || e).style.display = 'none'; });
   })
   .catch(()=>{});
 </script>
