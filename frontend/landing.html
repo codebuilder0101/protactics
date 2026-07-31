@@ -50,7 +50,8 @@ svg{display:block;}
 
 /* Malla en perspectiva: el "piso" que hace que todo flote */
 .floor{position:fixed;left:0;right:0;bottom:-8vh;height:52vh;z-index:-1;pointer-events:none;overflow:hidden;
-  perspective:340px;perspective-origin:50% 0%;opacity:.32;
+  /* Más tenue ahora que detrás se ve el metraje: la malla encima ensuciaba. */
+  perspective:340px;perspective-origin:50% 0%;opacity:.16;
   -webkit-mask-image:linear-gradient(180deg,transparent,#000 62%,transparent 96%);
           mask-image:linear-gradient(180deg,transparent,#000 62%,transparent 96%);}
 .floor i{position:absolute;top:0;bottom:0;left:-30%;right:-30%;transform:rotateX(76deg);transform-origin:50% 0%;
@@ -146,12 +147,15 @@ header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px
    de modo que las secciones se desplazan por encima de la misma escena. */
 .bg-stage{position:fixed;inset:0;z-index:-2;pointer-events:none;overflow:hidden;}
 .bg-stage canvas,.bg-stage video{position:absolute;inset:0;width:100%;height:100%;}
-.bg-stage video{object-fit:cover;opacity:.20;mix-blend-mode:screen;filter:saturate(125%) contrast(112%);}
-/* Velo que oscurece arriba y abajo: sin él, el texto de las secciones
-   inferiores compite con las luces del muelle. */
+/* Mezcla normal, no "screen": con screen las zonas oscuras del clip quedaban
+   transparentes y solo se veía el brillo de las luces, nunca la escena. En
+   normal se ve el metraje real, así que la opacidad puede subir de verdad. */
+.bg-stage video{object-fit:cover;opacity:.58;filter:saturate(118%) contrast(104%) brightness(1.06);}
+/* Velo suave: lo justo para que el texto se sostenga. Antes tapaba tanto que
+   anulaba lo poco que dejaba pasar la mezcla. */
 .bg-stage::after{content:'';position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(180deg,rgba(5,8,15,.55) 0%,rgba(5,8,15,.12) 32%,
-             rgba(5,8,15,.34) 62%,rgba(5,8,15,.72) 100%);}
+  background:linear-gradient(180deg,rgba(5,8,15,.42) 0%,rgba(5,8,15,.06) 30%,
+             rgba(5,8,15,.16) 62%,rgba(5,8,15,.52) 100%);}
 
 .eyebrow{display:inline-flex;align-items:center;gap:.6rem;font-family:'IBM Plex Mono',monospace;font-size:.63rem;
   letter-spacing:.24em;color:var(--accent3);border:1px solid rgba(57,255,20,.28);border-radius:30px;
@@ -170,7 +174,10 @@ header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px
 .hero h2 b{font-weight:400;background:linear-gradient(96deg,#00e5ff 0%,#9ffbff 40%,#d8f7ff 62%,#ffe58a 100%);
   -webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;
   filter:drop-shadow(0 2px 0 rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(0,229,255,.45));}
-.hero p.lead{max-width:700px;margin:0 auto 2.6rem;font-size:1.1rem;font-weight:300;color:var(--text);line-height:1.68;}
+/* Peso 400 y sombra propia: con el video visible detrás, un 300 sin sombra
+   se deshacía justo sobre las luces del muelle. */
+.hero p.lead{max-width:700px;margin:0 auto 2.6rem;font-size:1.1rem;font-weight:400;color:#dceaf7;
+  line-height:1.68;text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 18px rgba(0,0,0,.6);}
 .hero-cta{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
 
 /* ══════════ SECCIONES ══════════ */
