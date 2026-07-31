@@ -4,161 +4,376 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PROTACTICS · Sistema Escáner Portuario</title>
-<link rel="icon" type="image/png" href="/assets/favicon.png">
+<!-- Marca recortada de 30 KB: favicon.png es el emblema completo de 2 MB. -->
+<link rel="icon" type="image/png" href="/assets/logo-mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#05080f; --panel:#0b1120; --border:#1a2d4a;
   --accent:#00e5ff; --accent2:#ff6b35; --accent3:#39ff14; --accent4:#ffd700;
   --text:#c8d8e8; --dim:#4a6580; --grid:#0d1e33;
+
+  /* superficies de vidrio (transparencia + desenfoque) */
+  --glass:linear-gradient(155deg,rgba(24,40,66,.55) 0%,rgba(9,15,28,.38) 55%,rgba(6,11,21,.55) 100%);
+  --glass-brd:rgba(120,190,235,.16);
+  --glass-brd-hi:rgba(0,229,255,.55);
+
+  /* sombras en capas: contacto + difusa + rebote ambiental */
+  --sh-1:0 1px 1px rgba(0,0,0,.5), 0 4px 10px rgba(0,0,0,.38);
+  --sh-2:0 2px 4px rgba(0,0,0,.45), 0 12px 28px rgba(0,0,0,.45), 0 28px 60px rgba(0,0,0,.35);
+  --sh-3:0 4px 8px rgba(0,0,0,.5), 0 22px 46px rgba(0,0,0,.55), 0 48px 90px rgba(0,0,0,.45);
+  --glow:0 0 0 1px rgba(0,229,255,.14), 0 12px 40px rgba(0,229,255,.14);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 html{scroll-behavior:smooth;}
-body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;overflow-x:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;}
+
+/* Líneas de barrido tipo monitor CRT sobre toda la página */
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
   background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,.012) 2px,rgba(0,229,255,.012) 4px);}
-/* ambient glow */
-body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:-1;
-  background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(0,229,255,.10),transparent 60%),
-             radial-gradient(ellipse 60% 50% at 90% 10%,rgba(255,215,0,.05),transparent 55%);}
+/* Halo ambiental que da profundidad al fondo */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:-2;
+  background:radial-gradient(ellipse 80% 55% at 50% -10%,rgba(0,229,255,.13),transparent 62%),
+             radial-gradient(ellipse 55% 45% at 88% 8%,rgba(255,215,0,.06),transparent 58%),
+             radial-gradient(ellipse 60% 50% at 6% 42%,rgba(255,107,53,.05),transparent 60%);}
 a{color:inherit;text-decoration:none;}
+svg{display:block;}
+::selection{background:rgba(0,229,255,.28);color:#eaf6ff;}
 
-/* HEADER */
-header{background:linear-gradient(180deg,#071525 0%,rgba(5,8,15,.7) 100%);border-bottom:1px solid var(--border);
-  padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;
-  position:sticky;top:0;z-index:200;backdrop-filter:blur(6px);}
-.logo{display:flex;align-items:center;gap:.8rem;}
-.logo svg{width:34px;height:34px;}
-.logo h1{font-family:'Bebas Neue',sans-serif;font-size:1.35rem;letter-spacing:.1em;color:var(--accent);
-  text-shadow:0 0 18px rgba(0,229,255,.4);line-height:1;}
-.logo h1 span{display:block;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:var(--dim);letter-spacing:.2em;margin-top:2px;}
-.hdr-right{display:flex;align-items:center;gap:.8rem;}
+/* Malla en perspectiva: el "piso" que hace que todo flote */
+.floor{position:fixed;left:0;right:0;bottom:-8vh;height:52vh;z-index:-1;pointer-events:none;overflow:hidden;
+  perspective:340px;perspective-origin:50% 0%;opacity:.32;
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 62%,transparent 96%);
+          mask-image:linear-gradient(180deg,transparent,#000 62%,transparent 96%);}
+.floor i{position:absolute;top:0;bottom:0;left:-30%;right:-30%;transform:rotateX(76deg);transform-origin:50% 0%;
+  background:linear-gradient(rgba(0,229,255,.24) 1px,transparent 1px) 0 0/100% 46px,
+             linear-gradient(90deg,rgba(0,229,255,.18) 1px,transparent 1px) 0 0/46px 100%;
+  animation:floorRun 5.5s linear infinite;}
+@keyframes floorRun{to{background-position:0 46px,46px 0;}}
 
-.btn{font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;
-  padding:.6rem 1.3rem;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .18s;display:inline-flex;align-items:center;gap:.5rem;}
-.btn-ghost{border-color:var(--border);color:var(--text);background:rgba(0,229,255,.03);}
-.btn-ghost:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 0 16px rgba(0,229,255,.18);}
-.btn-primary{background:linear-gradient(135deg,var(--accent),#0bb5cc);color:#02151b;font-weight:600;
-  box-shadow:0 0 22px rgba(0,229,255,.3);}
-.btn-primary:hover{box-shadow:0 0 30px rgba(0,229,255,.55);transform:translateY(-1px);}
-.btn-lg{padding:.85rem 1.8rem;font-size:.78rem;}
+/* ══════════ ENCABEZADO ══════════ */
+header{position:sticky;top:0;z-index:200;height:96px;padding:0 2.2rem;
+  display:flex;align-items:center;justify-content:space-between;gap:1.2rem;
+  background:linear-gradient(180deg,rgba(8,20,36,.9) 0%,rgba(5,8,15,.62) 100%);
+  border-bottom:1px solid rgba(120,190,235,.14);
+  backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);
+  box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 18px 44px rgba(0,0,0,.5);}
+/* filo luminoso inferior */
+header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.65) 22%,rgba(255,215,0,.4) 55%,transparent);opacity:.75;}
 
-/* HERO */
-.hero{max-width:1100px;margin:0 auto;padding:5.5rem 2rem 3rem;text-align:center;}
-.eyebrow{display:inline-flex;align-items:center;gap:.5rem;font-family:'IBM Plex Mono',monospace;font-size:.62rem;
-  letter-spacing:.22em;color:var(--accent3);border:1px solid var(--border);border-radius:30px;
-  padding:.4rem 1rem;margin-bottom:1.8rem;background:rgba(57,255,20,.04);}
-.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--accent3);box-shadow:0 0 8px var(--accent3);animation:pulse 1.6s infinite;}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
-.hero h2{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.6rem,7vw,5rem);line-height:.98;letter-spacing:.02em;
-  color:#eaf6ff;text-shadow:0 0 40px rgba(0,229,255,.25);margin-bottom:1.3rem;}
-.hero h2 b{color:var(--accent);font-weight:400;}
-.hero p.lead{max-width:680px;margin:0 auto 2.4rem;font-size:1.08rem;font-weight:300;color:var(--text);line-height:1.6;}
+.logo{display:flex;align-items:center;gap:1.15rem;min-width:0;}
+/* Medallón 3D: el emblema de radar montado sobre un disco de vidrio biselado */
+.logo-mark{position:relative;width:72px;height:72px;flex:none;border-radius:50%;
+  display:grid;place-items:center;
+  background:radial-gradient(circle at 34% 26%,rgba(0,229,255,.22),rgba(4,9,18,.96) 62%);
+  border:1px solid rgba(0,229,255,.34);
+  box-shadow:0 1px 0 rgba(180,240,255,.4) inset, 0 -12px 26px rgba(0,229,255,.12) inset,
+             var(--sh-2), 0 0 36px rgba(0,229,255,.22);
+  transform-style:preserve-3d;transition:transform .4s cubic-bezier(.2,.8,.25,1), box-shadow .4s;}
+.logo-mark img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;
+  filter:saturate(125%) contrast(108%) drop-shadow(0 0 10px rgba(0,229,255,.35));}
+/* barrido de radar girando sobre el emblema */
+.logo-mark .sweep{position:absolute;inset:3px;border-radius:50%;pointer-events:none;overflow:hidden;
+  background:conic-gradient(from 0deg,rgba(0,229,255,.55) 0deg,rgba(0,229,255,.07) 26deg,transparent 62deg);
+  mix-blend-mode:screen;animation:spin 4s linear infinite;opacity:.75;}
+/* brillo especular fijo: vende el cristal por encima del barrido */
+.logo-mark::before{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;z-index:2;
+  background:linear-gradient(158deg,rgba(255,255,255,.3),rgba(255,255,255,.05) 30%,transparent 52%);}
+/* anillo que orbita el medallón */
+.logo-mark::after{content:'';position:absolute;inset:-7px;border-radius:50%;pointer-events:none;z-index:2;
+  background:conic-gradient(from 0deg,transparent 0deg,rgba(0,229,255,.65) 44deg,rgba(255,215,0,.35) 78deg,transparent 128deg);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 2px));
+          mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 2px));
+  animation:spin 6s linear infinite;opacity:.9;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.logo:hover .logo-mark{transform:perspective(600px) rotateY(-14deg) rotateX(6deg) translateZ(6px);
+  box-shadow:0 1px 0 rgba(180,240,255,.5) inset, var(--sh-3), 0 0 50px rgba(0,229,255,.38);}
+
+.logo-txt{min-width:0;}
+.logo-kicker{font-family:'IBM Plex Mono',monospace;font-size:.6rem;letter-spacing:.28em;color:var(--dim);
+  text-transform:uppercase;display:block;margin-bottom:.18rem;}
+.logo-txt h1{font-family:'Bebas Neue',sans-serif;font-size:2.35rem;line-height:.9;letter-spacing:.09em;
+  background:linear-gradient(96deg,#eaf6ff 0%,var(--accent) 38%,var(--accent4) 92%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 18px rgba(0,229,255,.35));}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:.56rem;letter-spacing:.22em;color:var(--dim);
+  text-transform:uppercase;display:block;margin-top:.34rem;}
+.hdr-right{display:flex;align-items:center;gap:.75rem;flex:none;}
+
+/* ══════════ BOTONES ══════════ */
+.btn{position:relative;font-family:'IBM Plex Mono',monospace;font-size:.72rem;letter-spacing:.09em;
+  text-transform:uppercase;padding:.78rem 1.5rem;border-radius:10px;cursor:pointer;border:1px solid transparent;
+  display:inline-flex;align-items:center;gap:.55rem;overflow:hidden;isolation:isolate;
+  transition:transform .22s cubic-bezier(.2,.8,.25,1), box-shadow .22s, border-color .22s, color .22s;}
+.btn-ghost{border-color:var(--glass-brd);color:var(--text);background:rgba(140,200,240,.06);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  box-shadow:0 1px 0 rgba(255,255,255,.09) inset, var(--sh-1);}
+.btn-ghost:hover{border-color:var(--glass-brd-hi);color:#eaf6ff;transform:translateY(-2px);
+  box-shadow:0 1px 0 rgba(255,255,255,.14) inset, var(--sh-2), 0 0 24px rgba(0,229,255,.24);}
+.btn-primary{color:#02151b;font-weight:600;
+  background:linear-gradient(140deg,#7df5ff 0%,var(--accent) 42%,#079fb8 100%);
+  box-shadow:0 1px 0 rgba(255,255,255,.6) inset, 0 -6px 14px rgba(0,90,110,.45) inset,
+             0 6px 16px rgba(0,0,0,.45), 0 0 28px rgba(0,229,255,.35);}
+.btn-primary:hover{transform:translateY(-2px);
+  box-shadow:0 1px 0 rgba(255,255,255,.7) inset, 0 -6px 14px rgba(0,90,110,.45) inset,
+             0 12px 26px rgba(0,0,0,.5), 0 0 42px rgba(0,229,255,.6);}
+.btn:active{transform:translateY(1px) scale(.99);}
+/* destello que recorre el botón al pasar el cursor */
+.btn::after{content:'';position:absolute;inset:0;z-index:-1;transform:translateX(-120%);
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.35) 50%,transparent 70%);}
+.btn:hover::after{transform:translateX(120%);transition:transform .7s cubic-bezier(.3,.7,.3,1);}
+.btn-lg{padding:1rem 2.1rem;font-size:.8rem;border-radius:12px;}
+.btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .22s;}
+.btn:hover svg{transform:translateX(3px);}
+
+/* ══════════ HÉROE ══════════ */
+.hero{position:relative;max-width:1140px;margin:0 auto;padding:6.5rem 2rem 4rem;text-align:center;z-index:1;}
+/* lienzo animado + hueco opcional para video de fondo */
+.hero-stage{position:absolute;top:-6rem;bottom:0;left:50%;width:100vw;transform:translateX(-50%);
+  z-index:-1;pointer-events:none;overflow:hidden;
+  -webkit-mask-image:radial-gradient(ellipse 60% 75% at 50% 42%,#000 30%,transparent 78%);
+          mask-image:radial-gradient(ellipse 60% 75% at 50% 42%,#000 30%,transparent 78%);}
+.hero-stage canvas,.hero-stage video{position:absolute;inset:0;width:100%;height:100%;}
+.hero-stage video{object-fit:cover;opacity:.22;mix-blend-mode:screen;filter:saturate(130%) contrast(115%);}
+
+.eyebrow{display:inline-flex;align-items:center;gap:.6rem;font-family:'IBM Plex Mono',monospace;font-size:.63rem;
+  letter-spacing:.24em;color:var(--accent3);border:1px solid rgba(57,255,20,.28);border-radius:30px;
+  padding:.5rem 1.15rem;margin-bottom:2rem;background:rgba(57,255,20,.05);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  box-shadow:0 1px 0 rgba(255,255,255,.08) inset, var(--sh-1), 0 0 26px rgba(57,255,20,.14);}
+.eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--accent3);
+  box-shadow:0 0 10px var(--accent3);animation:pulse 1.6s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.65)}}
+
+.hero h2{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.7rem,7.2vw,5.4rem);line-height:.96;letter-spacing:.02em;
+  color:#eaf6ff;margin-bottom:1.5rem;text-shadow:0 2px 0 rgba(0,0,0,.6), 0 0 46px rgba(0,229,255,.3);}
+/* Stops claros de punta a punta: un dorado apagado en el medio ensuciaba la frase.
+   El text-shadow heredado se anula: con color transparente se pintaba por detrás
+   del degradado y apagaba las letras del centro. El brillo lo pone drop-shadow. */
+.hero h2 b{font-weight:400;background:linear-gradient(96deg,#00e5ff 0%,#9ffbff 40%,#d8f7ff 62%,#ffe58a 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:none;
+  filter:drop-shadow(0 2px 0 rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(0,229,255,.45));}
+.hero p.lead{max-width:700px;margin:0 auto 2.6rem;font-size:1.1rem;font-weight:300;color:var(--text);line-height:1.68;}
 .hero-cta{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
 
-/* MISSION */
-section{max-width:1100px;margin:0 auto;padding:2.5rem 2rem;}
-.section-tag{font-family:'IBM Plex Mono',monospace;font-size:.6rem;letter-spacing:.25em;color:var(--accent);
-  text-transform:uppercase;margin-bottom:.8rem;display:flex;align-items:center;gap:.6rem;}
-.section-tag::before{content:'';width:26px;height:1px;background:var(--accent);}
-.mission{background:linear-gradient(160deg,rgba(11,17,32,.9),rgba(7,13,25,.6));border:1px solid var(--border);
-  border-radius:14px;padding:2.6rem;position:relative;overflow:hidden;}
-.mission::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--accent),transparent);}
-.mission h3{font-family:'Bebas Neue',sans-serif;font-size:2rem;letter-spacing:.03em;color:#eaf6ff;margin-bottom:1rem;}
-.mission p{font-size:1.02rem;font-weight:300;line-height:1.7;color:var(--text);max-width:820px;}
-.mission p + p{margin-top:1rem;}
-.mission .accent{color:var(--accent);font-weight:600;}
+/* ══════════ SECCIONES ══════════ */
+section{max-width:1140px;margin:0 auto;padding:3rem 2rem;position:relative;z-index:1;}
+.section-tag{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.26em;color:var(--accent);
+  text-transform:uppercase;margin-bottom:1rem;display:flex;align-items:center;gap:.7rem;}
+.section-tag::before{content:'';width:30px;height:1px;background:linear-gradient(90deg,transparent,var(--accent));
+  box-shadow:0 0 8px rgba(0,229,255,.6);}
 
-/* PURPOSE / FEATURES */
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;margin-top:1.4rem;}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:1.7rem;transition:all .2s;}
-.card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 30px rgba(0,0,0,.4),0 0 22px rgba(0,229,255,.08);}
-.card .ic{font-size:1.7rem;margin-bottom:.9rem;display:block;filter:drop-shadow(0 0 10px rgba(0,229,255,.4));}
-.card h4{font-size:1.05rem;color:#eaf6ff;margin-bottom:.5rem;font-weight:600;}
-.card p{font-size:.9rem;font-weight:300;line-height:1.6;color:var(--dim);}
+/* Superficie de vidrio reutilizable */
+.glass{position:relative;background:var(--glass);border:1px solid var(--glass-brd);border-radius:18px;
+  backdrop-filter:blur(18px) saturate(135%);-webkit-backdrop-filter:blur(18px) saturate(135%);
+  box-shadow:0 1px 0 rgba(255,255,255,.1) inset, 0 -20px 40px rgba(0,0,0,.25) inset, var(--sh-2);
+  overflow:hidden;}
+/* brillo especular superior: da la sensación de cristal biselado */
+.glass::before{content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(168deg,rgba(255,255,255,.13),rgba(255,255,255,0) 34%);}
 
-/* STATS */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:1.4rem;}
-.stat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:1.6rem 1.2rem;text-align:center;}
-.stat .v{font-family:'Bebas Neue',sans-serif;font-size:2.6rem;color:var(--accent);line-height:1;text-shadow:0 0 20px rgba(0,229,255,.3);}
-.stat .l{font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-top:.6rem;}
+.mission{padding:3rem;}
+.mission::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:linear-gradient(180deg,var(--accent),rgba(255,215,0,.5) 45%,transparent);
+  box-shadow:0 0 22px rgba(0,229,255,.55);}
+.mission h3{font-family:'Bebas Neue',sans-serif;font-size:2.3rem;letter-spacing:.03em;color:#eaf6ff;
+  margin-bottom:1.1rem;text-shadow:0 2px 0 rgba(0,0,0,.5);}
+.mission p{font-size:1.04rem;font-weight:300;line-height:1.75;color:var(--text);max-width:830px;position:relative;}
+.mission p + p{margin-top:1.05rem;}
+.mission .accent{color:var(--accent);font-weight:500;text-shadow:0 0 18px rgba(0,229,255,.45);}
 
-/* CTA banner */
-.cta-band{max-width:1100px;margin:3rem auto 1rem;padding:0 2rem;}
-.cta-inner{background:linear-gradient(135deg,rgba(0,229,255,.08),rgba(255,215,0,.04));border:1px solid var(--border);
-  border-radius:14px;padding:2.6rem;text-align:center;}
-.cta-inner h3{font-family:'Bebas Neue',sans-serif;font-size:2.1rem;color:#eaf6ff;letter-spacing:.03em;margin-bottom:.6rem;}
-.cta-inner p{color:var(--dim);font-weight:300;margin-bottom:1.6rem;}
+/* ══════════ TARJETAS 3D ══════════ */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.35rem;margin-top:1.6rem;
+  perspective:1200px;}
+.card{padding:1.9rem 1.7rem 1.75rem;border-radius:18px;transform-style:preserve-3d;
+  transition:transform .35s cubic-bezier(.2,.8,.25,1), box-shadow .35s, border-color .35s;
+  will-change:transform;}
+/* foco que sigue al cursor sobre el cristal */
+.card .sheen{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(340px circle at var(--mx,50%) var(--my,50%),rgba(0,229,255,.16),transparent 62%);}
+.card:hover .sheen{opacity:1;}
+.card:hover{border-color:var(--glass-brd-hi);
+  box-shadow:0 1px 0 rgba(255,255,255,.16) inset, 0 -20px 40px rgba(0,0,0,.25) inset,
+             var(--sh-3), 0 0 40px rgba(0,229,255,.16);}
+/* el icono se levanta del plano de la tarjeta */
+.card .ic{position:relative;width:56px;height:56px;border-radius:16px;display:grid;place-items:center;
+  margin-bottom:1.15rem;transform:translateZ(28px);
+  background:linear-gradient(150deg,rgba(255,255,255,.14),rgba(10,18,33,.85) 55%,rgba(4,8,16,.95));
+  border:1px solid rgba(140,200,240,.2);
+  box-shadow:0 1px 0 rgba(255,255,255,.28) inset, 0 8px 18px rgba(0,0,0,.5), 0 0 22px var(--hue,rgba(0,229,255,.28));
+  transition:transform .35s cubic-bezier(.2,.8,.25,1), box-shadow .35s;}
+.card .ic svg{width:26px;height:26px;stroke:var(--ink,#8ef7ff);stroke-width:1.6;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 8px var(--hue,rgba(0,229,255,.5)));}
+.card:hover .ic{transform:translateZ(46px) scale(1.06);
+  box-shadow:0 1px 0 rgba(255,255,255,.4) inset, 0 14px 26px rgba(0,0,0,.55), 0 0 34px var(--hue,rgba(0,229,255,.5));}
+.card h4{font-size:1.08rem;color:#eaf6ff;margin-bottom:.55rem;font-weight:600;transform:translateZ(18px);}
+.card p{font-size:.92rem;font-weight:300;line-height:1.65;color:#7d9bb8;transform:translateZ(10px);}
 
-/* FOOTER */
-footer{border-top:1px solid var(--border);margin-top:3rem;padding:1.4rem 2rem;
+/* ══════════ INDICADORES ══════════ */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1.1rem;margin-top:1.6rem;perspective:1200px;}
+.stat{padding:1.9rem 1.2rem;text-align:center;border-radius:18px;transform-style:preserve-3d;
+  transition:transform .35s cubic-bezier(.2,.8,.25,1), box-shadow .35s, border-color .35s;will-change:transform;}
+.stat:hover{border-color:var(--glass-brd-hi);
+  box-shadow:0 1px 0 rgba(255,255,255,.16) inset, var(--sh-3), 0 0 36px rgba(0,229,255,.16);}
+.stat .v{font-family:'Bebas Neue',sans-serif;font-size:3rem;line-height:1;transform:translateZ(30px);
+  background:linear-gradient(180deg,#eaf6ff,var(--accent) 75%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 3px 10px rgba(0,229,255,.45));}
+.stat .l{font-family:'IBM Plex Mono',monospace;font-size:.59rem;letter-spacing:.14em;color:var(--dim);
+  text-transform:uppercase;margin-top:.7rem;transform:translateZ(14px);}
+/* barra de luz inferior que respira */
+.stat .bar{position:absolute;left:22%;right:22%;bottom:0;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.55;
+  animation:breathe 3.4s ease-in-out infinite;}
+@keyframes breathe{0%,100%{opacity:.25;transform:scaleX(.6)}50%{opacity:.9;transform:scaleX(1)}}
+
+/* ══════════ LLAMADO FINAL ══════════ */
+.cta-band{max-width:1140px;margin:3.5rem auto 1rem;padding:0 2rem;position:relative;z-index:1;}
+.cta-inner{padding:3.2rem 2rem;text-align:center;border-radius:20px;}
+/* aurora lenta detrás del cristal */
+.cta-inner::after{content:'';position:absolute;inset:-45%;pointer-events:none;z-index:-1;
+  /* Sin dorado: mezclado con el cian por el desenfoque daba un verde oliva sucio. */
+  background:conic-gradient(from 0deg,rgba(0,229,255,.5),rgba(90,140,255,.42) 26%,rgba(150,90,255,.4) 52%,
+             rgba(255,90,140,.26) 74%,rgba(0,229,255,.5));
+  filter:blur(52px) saturate(150%);opacity:.5;animation:spin 22s linear infinite;}
+.cta-inner h3{font-family:'Bebas Neue',sans-serif;font-size:2.5rem;color:#eaf6ff;letter-spacing:.03em;
+  margin-bottom:.7rem;text-shadow:0 2px 0 rgba(0,0,0,.5), 0 0 34px rgba(0,229,255,.25);}
+.cta-inner p{color:var(--dim);font-weight:300;margin-bottom:1.8rem;}
+
+/* ══════════ PIE ══════════ */
+footer{position:relative;z-index:1;border-top:1px solid rgba(120,190,235,.12);margin-top:3.5rem;padding:1.8rem 2rem;
   display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
-  font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.1em;color:var(--dim);}
+  background:linear-gradient(180deg,transparent,rgba(8,16,30,.6));
+  font-family:'IBM Plex Mono',monospace;font-size:.59rem;letter-spacing:.11em;color:var(--dim);}
 
-@media(max-width:760px){
-  header{padding:0 1rem;}
-  .logo h1{font-size:1.1rem;}
-  .grid,.stats{grid-template-columns:1fr 1fr;}
-  .hero{padding-top:3.5rem;}
-  .mission{padding:1.6rem;}
+/* ══════════ APARICIÓN AL DESPLAZAR ══════════ */
+.reveal{opacity:0;transform:translateY(26px) scale(.985);
+  transition:opacity .7s cubic-bezier(.2,.8,.25,1), transform .7s cubic-bezier(.2,.8,.25,1);}
+.reveal.in{opacity:1;transform:none;}
+
+/* ══════════ RESPONSIVO ══════════ */
+@media(max-width:900px){
+  .grid{grid-template-columns:repeat(2,1fr);}
 }
-@media(max-width:460px){
+@media(max-width:760px){
+  header{padding:0 1.1rem;height:80px;}
+  .logo{gap:.85rem;}
+  .logo-mark{width:58px;height:58px;}
+  .logo-txt h1{font-size:1.85rem;}
+  .stats{grid-template-columns:1fr 1fr;}
+  .hero{padding:4rem 1.2rem 2.5rem;}
+  .mission{padding:1.9rem;}
+  .cta-inner{padding:2.4rem 1.4rem;}
+}
+@media(max-width:520px){
   .grid,.stats{grid-template-columns:1fr;}
-  /* Ambos botones visibles; se compactan y se oculta el subtítulo del logo
-     para que entren sin desbordar en pantallas angostas. */
-  header{padding:0 .8rem;}
-  .logo h1 span{display:none;}
+  /* Ambos botones visibles: se compactan y se ocultan los rótulos secundarios
+     del logo para que entren sin desbordar en pantallas angostas. */
+  header{padding:0 .8rem;height:72px;}
+  .logo-mark{width:46px;height:46px;}
+  .logo-kicker,.logo-sub{display:none;}
+  .logo-txt h1{font-size:1.6rem;}
   .hdr-right{gap:.4rem;}
-  .hdr-right .btn{padding:.5rem .7rem;font-size:.6rem;}
+  .hdr-right .btn{padding:.55rem .8rem;font-size:.62rem;}
+}
+
+/* Respeta a quien pide menos movimiento */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.01ms!important;}
+  .reveal{opacity:1;transform:none;}
+  html{scroll-behavior:auto;}
 }
 </style>
 </head>
 <body>
 
+<!-- Malla en perspectiva de fondo -->
+<div class="floor" aria-hidden="true"><i></i></div>
+
+<!-- Biblioteca de iconos (trazo, estilo lineal moderno) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-map" viewBox="0 0 24 24">
+      <path d="M9 3.5 3.5 6v14.5L9 18l6 2.5 5.5-2.5V3.5L15 6 9 3.5Z"/>
+      <path d="M9 3.5V18M15 6v14.5"/>
+    </symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24">
+      <path d="M3.5 20.5h17"/>
+      <rect x="5" y="12" width="3.6" height="6" rx="1.2"/>
+      <rect x="10.2" y="7.5" width="3.6" height="10.5" rx="1.2"/>
+      <rect x="15.4" y="4" width="3.6" height="14" rx="1.2"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5"/>
+      <path d="M12 7v5.2l3.4 2"/>
+      <path d="M12 1.8v1.6M12 20.6v1.6M22.2 12h-1.6M3.4 12H1.8"/>
+    </symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24">
+      <path d="M2.5 13h4l2.2-6 3.4 12 2.6-7.5 1.8 3.5h5"/>
+      <circle cx="18.7" cy="15" r="1.6"/>
+    </symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24">
+      <path d="M6.5 16.5A4 4 0 0 1 7 8.6a5.5 5.5 0 0 1 10.5 1.6 3.6 3.6 0 0 1 .4 7"/>
+      <path d="M12 21V11.4M12 11.4 9.2 14.2M12 11.4l2.8 2.8"/>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24">
+      <path d="M12 2.6 4.8 5.6v6c0 4.4 3 8.3 7.2 9.8 4.2-1.5 7.2-5.4 7.2-9.8v-6L12 2.6Z"/>
+      <path d="M12 11.2v3.2"/>
+      <circle cx="12" cy="9.6" r="1.7"/>
+    </symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24">
+      <path d="M4.5 12h14M13 6.5 18.5 12 13 17.5"/>
+    </symbol>
+  </defs>
+</svg>
+
 <header>
-  <div class="logo">
-    <svg viewBox="0 0 34 34" fill="none">
-      <circle cx="17" cy="17" r="15" stroke="#00e5ff" stroke-width="1" opacity=".3"/>
-      <circle cx="17" cy="17" r="9"  stroke="#00e5ff" stroke-width="1" opacity=".5"/>
-      <circle cx="17" cy="17" r="3.5" stroke="#00e5ff" stroke-width="1"/>
-      <line x1="17" y1="2" x2="17" y2="32" stroke="#00e5ff" stroke-width=".5" opacity=".3"/>
-      <line x1="2"  y1="17" x2="32" y2="17" stroke="#00e5ff" stroke-width=".5" opacity=".3"/>
-      <path d="M17 17 L30 8" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" opacity=".9">
-        <animateTransform attributeName="transform" type="rotate" from="0 17 17" to="360 17 17" dur="4s" repeatCount="indefinite"/>
-      </path>
-      <circle cx="17" cy="17" r="2" fill="#00e5ff"/>
-    </svg>
-    <h1>SISTEMA ESCÁNER PORTUARIO <span style="color:var(--accent4)">PROTACTICS</span>
-      <span>TABLERO DE CONTROL OPERACIONAL · COLOMBIA</span>
-    </h1>
-  </div>
+  <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+    <span class="logo-mark">
+      <img src="/assets/logo-mark.png" width="72" height="72" alt="" aria-hidden="true">
+      <span class="sweep"></span>
+    </span>
+    <span class="logo-txt">
+      <span class="logo-kicker">Sistema escáner portuario</span>
+      <h1>PROTACTICS</h1>
+      <span class="logo-sub">Tablero de control operacional · Colombia</span>
+    </span>
+  </a>
   <div class="hdr-right" id="hdrRight">
     <a class="btn btn-primary" href="/login">Iniciar sesión</a>
     <a class="btn btn-ghost" href="/register">Registrarse</a>
   </div>
 </header>
 
-<!-- HERO -->
+<!-- HÉROE -->
 <div class="hero">
-  <div class="eyebrow"><span class="dot"></span>CONTROL DE ESCÁNERES PORTUARIOS EN VIVO</div>
-  <h2>Toda la operación de los<br><b>escáneres portuarios</b> de Colombia en una sola pantalla</h2>
-  <p class="lead">
+  <div class="hero-stage" aria-hidden="true">
+    <!-- Hueco para video de fondo: si existe /assets/hero-loop.mp4 se monta solo. -->
+    <canvas id="fx"></canvas>
+  </div>
+  <div class="eyebrow reveal"><span class="dot"></span>CONTROL DE ESCÁNERES PORTUARIOS EN VIVO</div>
+  <h2 class="reveal">Toda la operación de los<br><b>escáneres portuarios</b> de Colombia en una sola pantalla</h2>
+  <p class="lead reveal">
     Reunimos en un mismo lugar lo que cada puerto escanea día a día. Mira cuántas
     inspecciones se hicieron, a qué horas hubo más movimiento, cómo va la disponibilidad
     de cada escáner y quién estuvo operando. Se acabaron las hojas sueltas y andar
     persiguiendo reportes.
   </p>
-  <div class="hero-cta">
-    <a class="btn btn-primary btn-lg" href="/register">Crear cuenta gratis</a>
+  <div class="hero-cta reveal">
+    <a class="btn btn-primary btn-lg" href="/register">Crear cuenta gratis <svg><use href="#i-arrow"/></svg></a>
     <a class="btn btn-ghost btn-lg" href="/login">Ya tengo cuenta</a>
   </div>
 </div>
 
-<!-- MISSION -->
+<!-- MISIÓN -->
 <section>
-  <div class="section-tag">Nuestra misión</div>
-  <div class="mission">
+  <div class="section-tag reveal">Nuestra misión</div>
+  <div class="mission glass reveal">
     <h3>Saber qué pasa en cada escáner, sin vueltas</h3>
     <p>
       Por cada puerto del país pasan miles de contenedores y todos se inspeccionan. Esa
@@ -174,60 +389,66 @@ footer{border-top:1px solid var(--border);margin-top:3rem;padding:1.4rem 2rem;
   </div>
 </section>
 
-<!-- PURPOSE -->
+<!-- PROPÓSITO -->
 <section>
-  <div class="section-tag">Para qué sirve</div>
-  <div class="grid">
-    <div class="card">
-      <span class="ic">🗺️</span>
+  <div class="section-tag reveal">Para qué sirve</div>
+  <div class="grid" id="cards">
+    <div class="card glass reveal" style="--hue:rgba(0,229,255,.4);--ink:#8ef7ff">
+      <span class="sheen"></span>
+      <span class="ic"><svg><use href="#i-map"/></svg></span>
       <h4>Mapa operacional</h4>
       <p>Mira todos los puertos del país en un mapa y entra a cualquiera con un clic.</p>
     </div>
-    <div class="card">
-      <span class="ic">📊</span>
+    <div class="card glass reveal" style="--hue:rgba(255,215,0,.4);--ink:#ffe680">
+      <span class="sheen"></span>
+      <span class="ic"><svg><use href="#i-chart"/></svg></span>
       <h4>Métricas del mes</h4>
       <p>Total de escaneos, días con operación, promedio y el día más alto. Todo calculado solo.</p>
     </div>
-    <div class="card">
-      <span class="ic">⏱️</span>
+    <div class="card glass reveal" style="--hue:rgba(57,255,20,.35);--ink:#a6ff8f">
+      <span class="sheen"></span>
+      <span class="ic"><svg><use href="#i-clock"/></svg></span>
       <h4>Actividad por hora</h4>
       <p>Un mapa de calor te muestra a qué horas hay más movimiento y dónde se traba la operación.</p>
     </div>
-    <div class="card">
-      <span class="ic">📈</span>
+    <div class="card glass reveal" style="--hue:rgba(255,107,53,.4);--ink:#ffb08a">
+      <span class="sheen"></span>
+      <span class="ic"><svg><use href="#i-pulse"/></svg></span>
       <h4>Disponibilidad del servicio</h4>
       <p>Lleva la cuenta de cuánto operó cada escáner en el mes. Lo saca solo o lo ajustas tú.</p>
     </div>
-    <div class="card">
-      <span class="ic">📥</span>
+    <div class="card glass reveal" style="--hue:rgba(0,229,255,.4);--ink:#8ef7ff">
+      <span class="sheen"></span>
+      <span class="ic"><svg><use href="#i-upload"/></svg></span>
       <h4>Carga de reportes</h4>
       <p>Sube el archivo de cada puerto y queda listo al instante. Lee Standard, Rapiscan y TCBUEN.</p>
     </div>
-    <div class="card">
-      <span class="ic">🔐</span>
+    <div class="card glass reveal" style="--hue:rgba(150,120,255,.4);--ink:#c0b4ff">
+      <span class="sheen"></span>
+      <span class="ic"><svg><use href="#i-shield"/></svg></span>
       <h4>Acceso controlado</h4>
       <p>Aquí solo entra quien tiene cuenta. Los datos quedan a la vista de tu equipo y de nadie más.</p>
     </div>
   </div>
 </section>
 
-<!-- STATS -->
+<!-- COBERTURA -->
 <section>
-  <div class="section-tag">Cobertura</div>
-  <div class="stats">
-    <div class="stat"><div class="v">7</div><div class="l">Escáneres conectados</div></div>
-    <div class="stat"><div class="v">4</div><div class="l">Departamentos</div></div>
-    <div class="stat"><div class="v">3</div><div class="l">Formatos que lee</div></div>
-    <div class="stat"><div class="v">24/7</div><div class="l">Datos siempre al día</div></div>
+  <div class="section-tag reveal">Cobertura</div>
+  <div class="stats" id="stats">
+    <div class="stat glass reveal"><div class="v" data-count="7">0</div><div class="l">Escáneres conectados</div><span class="bar"></span></div>
+    <div class="stat glass reveal"><div class="v" data-count="4">0</div><div class="l">Departamentos</div><span class="bar"></span></div>
+    <div class="stat glass reveal"><div class="v" data-count="3">0</div><div class="l">Formatos que lee</div><span class="bar"></span></div>
+    <div class="stat glass reveal"><div class="v">24/7</div><div class="l">Datos siempre al día</div><span class="bar"></span></div>
   </div>
 </section>
 
-<!-- CTA -->
+<!-- LLAMADO FINAL -->
 <div class="cta-band">
-  <div class="cta-inner">
+  <div class="cta-inner glass reveal">
     <h3>Empieza hoy mismo</h3>
     <p>Crea tu cuenta y entra al tablero en un minuto.</p>
-    <a class="btn btn-primary btn-lg" href="/register">Crear mi cuenta</a>
+    <a class="btn btn-primary btn-lg" href="/register">Crear mi cuenta <svg><use href="#i-arrow"/></svg></a>
   </div>
 </div>
 
@@ -238,17 +459,177 @@ footer{border-top:1px solid var(--border);margin-top:3rem;padding:1.4rem 2rem;
 </footer>
 
 <script>
-// Si ya hay sesión activa, cambia los CTA por "Ir al panel".
+const QUIETO = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ── Fondo animado del héroe: campo de radar con barrido y partículas ──
+   Se dibuja en canvas para que parezca video sin descargar ningún archivo. */
+(function(){
+  const cv = document.getElementById('fx');
+  if (!cv || QUIETO) return;
+  const ctx = cv.getContext('2d');
+  let w = 0, h = 0, motas = [], sweep = 0, raf = 0;
+
+  function medir(){
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    w = cv.clientWidth; h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Densidad proporcional al área, con tope para no castigar equipos lentos.
+    const n = Math.min(90, Math.round(w * h / 16000));
+    motas = Array.from({length:n}, () => nueva(true));
+  }
+  function nueva(inicial){
+    return {x:Math.random()*w, y:inicial ? Math.random()*h : h + 10,
+            r:Math.random()*1.8 + .4, v:Math.random()*.35 + .12, a:Math.random()*.5 + .18};
+  }
+  function pintar(){
+    ctx.clearRect(0, 0, w, h);
+
+    // Barrido horizontal descendente, como el haz de un escáner.
+    sweep = (sweep + .0016) % 1;
+    const y = sweep * h;
+    // Se atenúa hacia los bordes laterales para que la estela no se lea
+    // como un rectángulo con filos rectos detrás del titular.
+    const g = ctx.createLinearGradient(0, y - 150, 0, y + 10);
+    g.addColorStop(0, 'rgba(0,229,255,0)');
+    g.addColorStop(.72, 'rgba(0,229,255,.04)');
+    g.addColorStop(1, 'rgba(0,229,255,.11)');
+    const lat = ctx.createLinearGradient(0, 0, w, 0);
+    lat.addColorStop(0, 'rgba(0,0,0,0)');
+    lat.addColorStop(.5, 'rgba(0,0,0,1)');
+    lat.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    // El recorte acota el 'destination-in' a la banda; sin él borraría el resto del lienzo.
+    ctx.beginPath();
+    ctx.rect(0, y - 150, w, 160);
+    ctx.clip();
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y - 150, w, 160);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = lat;
+    ctx.fillRect(0, y - 150, w, 160);
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = .45;
+    const linea = ctx.createLinearGradient(0, 0, w, 0);
+    linea.addColorStop(0, 'rgba(140,247,255,0)');
+    linea.addColorStop(.5, 'rgba(140,247,255,1)');
+    linea.addColorStop(1, 'rgba(140,247,255,0)');
+    ctx.fillStyle = linea;
+    ctx.fillRect(0, y, w, 1);
+    ctx.restore();
+
+    // Motas de datos que suben; las cercanas al haz se encienden.
+    for (const m of motas){
+      m.y -= m.v;
+      if (m.y < -10) Object.assign(m, nueva(false));
+      const cerca = Math.max(0, 1 - Math.abs(m.y - y) / 110);
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r + cerca * 1.3, 0, Math.PI * 2);
+      ctx.fillStyle = cerca > .3
+        ? 'rgba(255,215,0,' + (m.a * .55 + cerca * .45) + ')'
+        : 'rgba(0,229,255,' + m.a * .55 + ')';
+      ctx.fill();
+    }
+    raf = requestAnimationFrame(pintar);
+  }
+
+  addEventListener('resize', medir, {passive:true});
+  // No gastar CPU con la pestaña oculta.
+  document.addEventListener('visibilitychange', () => {
+    cancelAnimationFrame(raf);
+    if (!document.hidden) raf = requestAnimationFrame(pintar);
+  });
+  medir(); raf = requestAnimationFrame(pintar);
+
+  /* Video de fondo opcional. Se comprueba antes de crear el elemento: si el
+     equipo publica /assets/hero-loop.mp4 se monta sobre el lienzo en modo
+     "screen"; si no existe, la página se queda solo con la animación. */
+  const VIDEO = '/assets/hero-loop.mp4';
+  fetch(VIDEO, {method:'HEAD'})
+    .then(r => {
+      if (!r.ok) return;
+      const vid = document.createElement('video');
+      vid.muted = vid.loop = vid.playsInline = vid.autoplay = true;
+      vid.preload = 'auto';
+      vid.src = VIDEO;
+      cv.parentNode.appendChild(vid);
+      vid.play().catch(()=>{});
+    })
+    .catch(()=>{});
+})();
+
+/* ── Aparición progresiva al desplazar ── */
+(function(){
+  const items = document.querySelectorAll('.reveal');
+  if (QUIETO || !('IntersectionObserver' in window)){
+    items.forEach(e => e.classList.add('in'));
+    return;
+  }
+  const io = new IntersectionObserver((entradas) => {
+    entradas.forEach((e, i) => {
+      if (!e.isIntersecting) return;
+      // Escalona los hermanos visibles para que entren en cascada.
+      e.target.style.transitionDelay = (i * 70) + 'ms';
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+    });
+  }, {threshold:.15, rootMargin:'0px 0px -8% 0px'});
+  items.forEach(e => io.observe(e));
+})();
+
+/* ── Inclinación 3D de tarjetas siguiendo el cursor ── */
+(function(){
+  if (QUIETO || !matchMedia('(hover:hover)').matches) return;
+  document.querySelectorAll('.card, .stat').forEach(el => {
+    el.addEventListener('pointermove', ev => {
+      const r = el.getBoundingClientRect();
+      const px = (ev.clientX - r.left) / r.width;
+      const py = (ev.clientY - r.top) / r.height;
+      el.style.transform =
+        'perspective(900px) rotateX(' + ((.5 - py) * 9).toFixed(2) + 'deg) ' +
+        'rotateY(' + ((px - .5) * 11).toFixed(2) + 'deg) translateY(-6px)';
+      el.style.setProperty('--mx', (px * 100).toFixed(1) + '%');
+      el.style.setProperty('--my', (py * 100).toFixed(1) + '%');
+    });
+    el.addEventListener('pointerleave', () => { el.style.transform = ''; });
+  });
+})();
+
+/* ── Contadores de cobertura ── */
+(function(){
+  const vals = document.querySelectorAll('.stat .v[data-count]');
+  if (QUIETO || !('IntersectionObserver' in window)){
+    vals.forEach(v => v.textContent = v.dataset.count);
+    return;
+  }
+  const io = new IntersectionObserver(entradas => {
+    entradas.forEach(e => {
+      if (!e.isIntersecting) return;
+      const el = e.target, meta = +el.dataset.count, t0 = performance.now();
+      (function paso(t){
+        const k = Math.min(1, (t - t0) / 1100);
+        el.textContent = Math.round(meta * (1 - Math.pow(1 - k, 3)));
+        if (k < 1) requestAnimationFrame(paso);
+      })(t0);
+      io.unobserve(el);
+    });
+  }, {threshold:.6});
+  vals.forEach(v => io.observe(v));
+})();
+
+/* ── Sesión activa: cambia los CTA por "Ir al panel". ── */
 fetch('/api/auth/me', {credentials:'include'})
   .then(r => r.ok ? r.json() : null)
   .then(u => {
     if (!u) return;
     document.getElementById('hdrRight').innerHTML =
-      '<a class="btn btn-primary" href="/dashboard">Ir al panel →</a>';
+      '<a class="btn btn-primary" href="/dashboard">Ir al panel <svg><use href="#i-arrow"/></svg></a>';
   })
   .catch(()=>{});
 
-// Sitio privado: oculta los botones de registro si está deshabilitado.
+/* ── Sitio privado: oculta los botones de registro si está deshabilitado. ── */
 fetch('/api/config')
   .then(r => r.ok ? r.json() : null)
   .then(c => {

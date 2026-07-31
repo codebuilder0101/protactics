@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema Escáner Portuario — Colombia</title>
-<link rel="icon" type="image/png" href="/assets/favicon.png">
+<link rel="icon" type="image/png" href="/assets/logo-mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -24,7 +24,7 @@ header{background:linear-gradient(180deg,#071525 0%,var(--bg) 100%);border-botto
   padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;
   position:sticky;top:0;z-index:200;}
 .logo{display:flex;align-items:center;gap:.8rem;}
-.logo svg{width:34px;height:34px;}
+.brand-mark{width:38px;height:38px;flex:none;border-radius:50%;object-fit:cover;display:block;box-shadow:0 0 0 1px rgba(0,229,255,.35), 0 0 18px rgba(0,229,255,.28);}
 .logo h1{font-family:'Bebas Neue',sans-serif;font-size:1.35rem;letter-spacing:.1em;color:var(--accent);
   text-shadow:0 0 18px rgba(0,229,255,.4);line-height:1;}
 .logo h1 span{display:block;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:var(--dim);letter-spacing:.2em;margin-top:2px;}
@@ -371,17 +371,7 @@ main{padding:1.5rem 2rem;max-width:1500px;margin:0 auto;}
 
 <header>
   <div class="logo">
-    <svg viewBox="0 0 34 34" fill="none">
-      <circle cx="17" cy="17" r="15" stroke="#00e5ff" stroke-width="1" opacity=".3"/>
-      <circle cx="17" cy="17" r="9"  stroke="#00e5ff" stroke-width="1" opacity=".5"/>
-      <circle cx="17" cy="17" r="3.5" stroke="#00e5ff" stroke-width="1"/>
-      <line x1="17" y1="2" x2="17" y2="32" stroke="#00e5ff" stroke-width=".5" opacity=".3"/>
-      <line x1="2"  y1="17" x2="32" y2="17" stroke="#00e5ff" stroke-width=".5" opacity=".3"/>
-      <path d="M17 17 L30 8" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" opacity=".9">
-        <animateTransform attributeName="transform" type="rotate" from="0 17 17" to="360 17 17" dur="4s" repeatCount="indefinite"/>
-      </path>
-      <circle cx="17" cy="17" r="2" fill="#00e5ff"/>
-    </svg>
+    <img class="brand-mark" src="/assets/logo-mark.png" alt="" aria-hidden="true">
     <h1>SISTEMA ESCÁNER PORTUARIO <span style="color:var(--accent4);text-shadow:0 0 18px rgba(255,215,0,.5)">PROTACTICS</span>
       <span>TABLERO DE CONTROL OPERACIONAL — COLOMBIA</span>
     </h1>

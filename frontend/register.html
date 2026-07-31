@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Crear cuenta — PROTACTICS</title>
-<link rel="icon" type="image/png" href="/assets/favicon.png">
+<link rel="icon" type="image/png" href="/assets/logo-mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 <style>
@@ -24,7 +24,7 @@ a{color:var(--accent);text-decoration:none;}
 a:hover{text-decoration:underline;}
 
 .brand{display:flex;align-items:center;gap:.7rem;margin-bottom:1.6rem;}
-.brand svg{width:38px;height:38px;}
+.brand-mark{width:44px;height:44px;flex:none;border-radius:50%;object-fit:cover;display:block;box-shadow:0 0 0 1px rgba(0,229,255,.35), 0 0 18px rgba(0,229,255,.28);}
 .brand h1{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:.1em;color:var(--accent);text-shadow:0 0 18px rgba(0,229,255,.4);line-height:1;}
 .brand h1 span{display:block;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:var(--dim);letter-spacing:.2em;margin-top:3px;}
 .brand .gold{color:var(--accent4);}
@@ -71,15 +71,7 @@ input.invalid,select.invalid{border-color:var(--danger);}
 <body>
 
 <div class="brand">
-  <svg viewBox="0 0 34 34" fill="none">
-    <circle cx="17" cy="17" r="15" stroke="#00e5ff" stroke-width="1" opacity=".3"/>
-    <circle cx="17" cy="17" r="9"  stroke="#00e5ff" stroke-width="1" opacity=".5"/>
-    <circle cx="17" cy="17" r="3.5" stroke="#00e5ff" stroke-width="1"/>
-    <path d="M17 17 L30 8" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round" opacity=".9">
-      <animateTransform attributeName="transform" type="rotate" from="0 17 17" to="360 17 17" dur="4s" repeatCount="indefinite"/>
-    </path>
-    <circle cx="17" cy="17" r="2" fill="#00e5ff"/>
-  </svg>
+  <img class="brand-mark" src="/assets/logo-mark.png" alt="" aria-hidden="true">
   <h1>PROTACTICS <span class="gold">SISTEMA ESCÁNER PORTUARIO</span></h1>
 </div>
 
