@@ -9,6 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Base compartida (cabecera, pie, botones). Va antes del <style> propio
+     para que los efectos del héroe de esta página tengan la última palabra. -->
+<link rel="stylesheet" href="/assets/site.css">
 <style>
 :root{
   --bg:#05080f; --panel:#0b1120; --border:#1a2d4a;
@@ -28,8 +31,10 @@
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 html{scroll-behavior:smooth;}
+/* display:block anula el flex de site.css: aquí el pie va al final del flujo
+   normal y no hace falta empujarlo con margin-top:auto. */
 body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;overflow-x:hidden;
-  -webkit-font-smoothing:antialiased;}
+  display:block;-webkit-font-smoothing:antialiased;}
 
 /* Líneas de barrido tipo monitor CRT sobre toda la página */
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
@@ -249,10 +254,8 @@ section{max-width:1140px;margin:0 auto;padding:3rem 2rem;position:relative;z-ind
 .cta-inner p{color:var(--dim);font-weight:300;margin-bottom:1.8rem;}
 
 /* ══════════ PIE ══════════ */
-footer{position:relative;z-index:1;border-top:1px solid rgba(120,190,235,.12);margin-top:3.5rem;padding:1.8rem 2rem;
-  display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
-  background:linear-gradient(180deg,transparent,rgba(8,16,30,.6));
-  font-family:'IBM Plex Mono',monospace;font-size:.59rem;letter-spacing:.11em;color:var(--dim);}
+/* El pie vive en site.css: es el mismo en las seis páginas. */
+footer{margin-top:3.5rem;}
 
 /* ══════════ APARICIÓN AL DESPLAZAR ══════════ */
 .reveal{opacity:0;transform:translateY(26px) scale(.985);
@@ -458,9 +461,46 @@ footer{position:relative;z-index:1;border-top:1px solid rgba(120,190,235,.12);ma
 </div>
 
 <footer>
-  <span>SISTEMA DE MONITOREO PORTUARIO · COLOMBIA</span>
-  <span>PROTACTICS · TABLERO DE CONTROL OPERACIONAL</span>
-  <span>Procesado por Claude · Anthropic</span>
+  <div class="pie-inner">
+    <div class="pie-marca">
+      <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+        <span class="logo-mark"><img src="/assets/logo-mark.png" width="52" height="52" alt="" aria-hidden="true"></span>
+        <span class="logo-txt"><span class="marca">PROTACTICS</span></span>
+      </a>
+      <p>
+        Monitoreo operacional de los escáneres portuarios de Colombia: inspecciones,
+        horas pico y disponibilidad de cada equipo, en un solo tablero.
+      </p>
+    </div>
+    <div class="pie-col">
+      <h5>Plataforma</h5>
+      <ul>
+        <li><a href="/">Inicio</a></li>
+        <li><a href="/acerca">Acerca de</a></li>
+        <li><a href="/login">Iniciar sesión</a></li>
+      </ul>
+    </div>
+    <div class="pie-col">
+      <h5>Soporte</h5>
+      <ul>
+        <li><a href="/contacto">Contacto</a></li>
+        <li><a href="/contacto#acceso">Solicitar acceso</a></li>
+        <li><a href="/contacto#fallas">Reportar una falla</a></li>
+      </ul>
+    </div>
+    <div class="pie-col">
+      <h5>Legal</h5>
+      <ul>
+        <li><a href="/privacidad">Privacidad</a></li>
+        <li><a href="/terminos">Términos de uso</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="pie-base">
+    <span>© 2026 PROTACTICS · Sistema escáner portuario</span>
+    <span class="estado"><span class="punto"></span>Sistema operativo</span>
+    <span>Colombia</span>
+  </div>
 </footer>
 
 <script>

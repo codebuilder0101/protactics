@@ -13,8 +13,9 @@ import openpyxl
 import xlrd
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -95,17 +96,56 @@ def favicon():
     return FileResponse(os.path.join(FRONTEND_DIR, "assets", "favicon.png"))
 
 
-def _page(name: str) -> FileResponse:
+def _page(name: str, status_code: int = 200) -> FileResponse:
     return FileResponse(
         os.path.join(FRONTEND_DIR, name),
+        status_code=status_code,
         headers={"Cache-Control": "no-store"},  # evita ver páginas cacheadas tras logout
     )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """404 con página propia para el navegador; JSON para el resto.
+
+    Solo se sustituye el 404 y solo cuando el cliente pide HTML de forma
+    explícita. La API debe seguir devolviendo {"detail": ...}: `fetch` envía
+    `Accept: */*`, que no coincide, y las rutas bajo /api/ quedan excluidas
+    aunque algún cliente mande una cabecera Accept generosa.
+    """
+    quiere_html = "text/html" in request.headers.get("accept", "")
+    es_api = request.url.path.startswith(("/api/", "/docs", "/openapi"))
+    if exc.status_code == 404 and quiere_html and not es_api:
+        return _page("404.html", status_code=404)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
+                        headers=getattr(exc, "headers", None))
 
 
 @app.get("/")
 def landing():
     """Página de aterrizaje pública (misión y propósito)."""
     return _page("landing.html")
+
+
+# ── Páginas públicas de contenido ─────────────────────────────
+@app.get("/acerca")
+def acerca_page():
+    return _page("acerca.html")
+
+
+@app.get("/privacidad")
+def privacidad_page():
+    return _page("privacidad.html")
+
+
+@app.get("/terminos")
+def terminos_page():
+    return _page("terminos.html")
+
+
+@app.get("/contacto")
+def contacto_page():
+    return _page("contacto.html")
 
 
 @app.get("/login")

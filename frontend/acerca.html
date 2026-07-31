@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acerca de — PROTACTICS</title>
+<meta name="description" content="Qué es PROTACTICS, qué escáneres portuarios cubre y cómo calcula sus indicadores.">
+<link rel="icon" type="image/png" href="/assets/logo-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header>
+  <div class="hdr-inner">
+    <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+      <span class="logo-mark"><img src="/assets/logo-mark.png" width="72" height="72" alt="" aria-hidden="true"></span>
+      <span class="logo-txt">
+        <span class="logo-kicker">Sistema escáner portuario</span>
+        <span class="marca">PROTACTICS</span>
+        <span class="logo-sub">Tablero de control operacional · Colombia</span>
+      </span>
+    </a>
+    <div class="hdr-right">
+      <a class="btn btn-primary" href="/login">Iniciar sesión</a>
+    </div>
+  </div>
+</header>
+
+<main class="doc">
+  <div class="doc-head">
+    <div class="section-tag">Acerca de</div>
+    <h1>Qué es PROTACTICS</h1>
+    <p class="lead">
+      Una plataforma que reúne en un solo lugar lo que registran los escáneres de los
+      puertos del país, para que la operación se pueda ver, medir y comparar sin
+      perseguir archivos sueltos.
+    </p>
+  </div>
+
+  <article class="doc-body glass">
+    <h3>El problema que resuelve</h3>
+    <p>
+      Por cada puerto pasan miles de contenedores y todos se inspeccionan. Esa información
+      pesa para la seguridad del país, para el comercio y para frenar el contrabando, pero
+      cada escáner la entrega en su propio formato y termina repartida en archivos que nadie
+      consolida. Comparar dos puertos, o el mismo puerto entre dos meses, obligaba a rehacer
+      el trabajo a mano cada vez.
+    </p>
+    <p>
+      PROTACTICS normaliza esos reportes al cargarlos y los deja consultables desde un mismo
+      tablero, con las mismas definiciones para todos los puertos.
+    </p>
+
+    <h3>Qué cubre</h3>
+    <p>Siete escáneres portuarios, distribuidos en cuatro departamentos:</p>
+    <ul>
+      <li><strong>SPR Buenaventura</strong> — Sociedad Portuaria Regional de Buenaventura</li>
+      <li><strong>Aguadulce</strong> — Puerto Industrial de Aguadulce</li>
+      <li><strong>TCBUEN</strong> — Terminal de Contenedores de Buenaventura</li>
+      <li><strong>Puerto Antioquia</strong> — escáneres E1 y E2</li>
+      <li><strong>SPR Barranquilla</strong> — Sociedad Portuaria Regional de Barranquilla</li>
+      <li><strong>Puerto Santa Marta</strong></li>
+    </ul>
+
+    <h3>Formatos que lee</h3>
+    <p>
+      Los equipos no reportan igual, así que la plataforma detecta el formato del archivo al
+      subirlo y aplica el lector que corresponde. Hoy reconoce tres:
+    </p>
+    <ul>
+      <li><strong>Standard</strong> — reporte con miniatura de imagen por inspección.</li>
+      <li><strong>Rapiscan</strong> — <em>Cargo Inspection Report</em>.</li>
+      <li><strong>TCBUEN</strong> — reporte con estado numérico.</li>
+    </ul>
+    <p>
+      Cuando un archivo no corresponde a ninguno, la carga se rechaza en lugar de guardar
+      datos que no se pueden interpretar.
+    </p>
+
+    <h3>Qué se puede ver</h3>
+    <ul>
+      <li><strong>Mapa operacional</strong> — todos los puertos y acceso directo a cada uno.</li>
+      <li><strong>Métricas del mes</strong> — total de escaneos, días con operación, promedio diario y el día más alto.</li>
+      <li><strong>Actividad por hora</strong> — mapa de calor con las horas de mayor movimiento.</li>
+      <li><strong>Disponibilidad</strong> — cuánto operó cada escáner en el mes.</li>
+      <li><strong>Búsqueda de contenedores</strong> — por identificador ISO 6346, dentro de los puertos que cada quien puede ver.</li>
+    </ul>
+
+    <h3>Cómo se calcula la disponibilidad</h3>
+    <p>
+      La disponibilidad del mes se estima a partir de los días con operación registrada,
+      descontando las ventanas de mantenimiento que se hayan declarado para ese equipo. El
+      valor calculado se puede ajustar manualmente cuando quien administra el puerto tiene
+      información que el reporte no refleja; en ese caso queda registrado que el dato fue
+      ajustado.
+    </p>
+
+    <h3>Quién puede entrar</h3>
+    <p>
+      El acceso es cerrado: no hay registro abierto. Las cuentas las asigna un administrador
+      y cada una ve solo lo que le corresponde según su perfil —desde un puerto concreto
+      hasta la vista nacional completa—. Si necesitas acceso, escribe a
+      <a href="/contacto">Contacto</a>.
+    </p>
+
+    <hr>
+    <p>
+      Operado por <span class="pendiente">[[PENDIENTE: entidad operadora]]</span>.
+      Consulta también la <a href="/privacidad">política de privacidad</a> y los
+      <a href="/terminos">términos de uso</a>.
+    </p>
+  </article>
+</main>
+
+<footer>
+  <div class="pie-inner">
+    <div class="pie-marca">
+      <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+        <span class="logo-mark"><img src="/assets/logo-mark.png" width="52" height="52" alt="" aria-hidden="true"></span>
+        <span class="logo-txt"><span class="marca">PROTACTICS</span></span>
+      </a>
+      <p>
+        Monitoreo operacional de los escáneres portuarios de Colombia: inspecciones,
+        horas pico y disponibilidad de cada equipo, en un solo tablero.
+      </p>
+    </div>
+    <div class="pie-col">
+      <h5>Plataforma</h5>
+      <ul>
+        <li><a href="/">Inicio</a></li>
+        <li><a href="/acerca">Acerca de</a></li>
+        <li><a href="/login">Iniciar sesión</a></li>
+      </ul>
+    </div>
+    <div class="pie-col">
+      <h5>Soporte</h5>
+      <ul>
+        <li><a href="/contacto">Contacto</a></li>
+        <li><a href="/contacto#acceso">Solicitar acceso</a></li>
+        <li><a href="/contacto#fallas">Reportar una falla</a></li>
+      </ul>
+    </div>
+    <div class="pie-col">
+      <h5>Legal</h5>
+      <ul>
+        <li><a href="/privacidad">Privacidad</a></li>
+        <li><a href="/terminos">Términos de uso</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="pie-base">
+    <span>© 2026 PROTACTICS · Sistema escáner portuario</span>
+    <span class="estado"><span class="punto"></span>Sistema operativo</span>
+    <span>Colombia</span>
+  </div>
+</footer>
+
+</body>
+</html>

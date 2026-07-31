@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Página no encontrada — PROTACTICS</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="/assets/logo-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<style>
+.err{flex:1 0 auto;display:flex;align-items:center;justify-content:center;
+  padding:4rem 2rem;position:relative;z-index:1;}
+.err-inner{max-width:640px;text-align:center;}
+
+/* Radar que barre sin encontrar nada: el eco del 404 */
+.radar{position:relative;width:190px;height:190px;margin:0 auto 2.6rem;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,229,255,.09),rgba(4,9,18,.9) 70%);
+  border:1px solid rgba(0,229,255,.28);
+  box-shadow:0 1px 0 rgba(180,240,255,.3) inset, var(--sh-2), 0 0 42px rgba(0,229,255,.18);}
+/* anillos concéntricos */
+.radar::before{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:
+    radial-gradient(circle,transparent 31%,rgba(0,229,255,.2) 31%,rgba(0,229,255,.2) 32%,transparent 32%),
+    radial-gradient(circle,transparent 61%,rgba(0,229,255,.14) 61%,rgba(0,229,255,.14) 62%,transparent 62%),
+    linear-gradient(90deg,transparent 49.6%,rgba(0,229,255,.14) 49.6%,rgba(0,229,255,.14) 50.4%,transparent 50.4%),
+    linear-gradient(0deg,transparent 49.6%,rgba(0,229,255,.14) 49.6%,rgba(0,229,255,.14) 50.4%,transparent 50.4%);}
+/* haz giratorio */
+.radar::after{content:'';position:absolute;inset:2px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(from 0deg,rgba(0,229,255,.5) 0deg,rgba(0,229,255,.06) 30deg,transparent 70deg);
+  animation:barrer 3.2s linear infinite;}
+@keyframes barrer{to{transform:rotate(360deg);}}
+.radar .codigo{position:absolute;inset:0;display:grid;place-items:center;z-index:2;
+  font-family:'Bebas Neue',sans-serif;font-size:3.6rem;letter-spacing:.06em;line-height:1;
+  background:linear-gradient(180deg,#eaf6ff,var(--accent) 78%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 3px 12px rgba(0,229,255,.5));}
+
+.err h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(2.2rem,5vw,3.2rem);line-height:1.02;
+  letter-spacing:.02em;color:#eaf6ff;margin-bottom:1rem;
+  text-shadow:0 2px 0 rgba(0,0,0,.6), 0 0 40px rgba(0,229,255,.25);}
+.err p{font-size:1.02rem;font-weight:300;line-height:1.7;color:var(--text);
+  max-width:46ch;margin:0 auto 2.2rem;}
+.err .ruta{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:.75rem;
+  letter-spacing:.04em;color:var(--accent4);background:rgba(255,215,0,.07);
+  border:1px solid rgba(255,215,0,.22);border-radius:7px;padding:.3rem .7rem;
+  margin-bottom:1.6rem;max-width:100%;overflow-wrap:anywhere;}
+.err-cta{display:flex;gap:.9rem;justify-content:center;flex-wrap:wrap;}
+.err-links{margin-top:2.4rem;font-family:'IBM Plex Mono',monospace;font-size:.62rem;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
+  display:flex;gap:1.4rem;justify-content:center;flex-wrap:wrap;}
+.err-links a{transition:color .2s;}
+.err-links a:hover{color:var(--accent);}
+@media(max-width:520px){
+  .radar{width:150px;height:150px;}
+  .radar .codigo{font-size:2.9rem;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-inner">
+    <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+      <span class="logo-mark"><img src="/assets/logo-mark.png" width="72" height="72" alt="" aria-hidden="true"></span>
+      <span class="logo-txt">
+        <span class="logo-kicker">Sistema escáner portuario</span>
+        <span class="marca">PROTACTICS</span>
+        <span class="logo-sub">Tablero de control operacional · Colombia</span>
+      </span>
+    </a>
+    <div class="hdr-right">
+      <a class="btn btn-primary" href="/login">Iniciar sesión</a>
+    </div>
+  </div>
+</header>
+
+<main class="err">
+  <div class="err-inner">
+    <div class="radar" aria-hidden="true"><span class="codigo">404</span></div>
+    <h1>El barrido no encontró nada aquí</h1>
+    <div class="ruta" id="ruta"></div>
+    <p>
+      La dirección no corresponde a ninguna página. Puede que el enlace esté mal escrito,
+      que la página haya cambiado de sitio, o que necesites iniciar sesión para verla.
+    </p>
+    <div class="err-cta">
+      <a class="btn btn-primary btn-lg" href="/">Volver al inicio</a>
+      <a class="btn btn-ghost btn-lg" href="/login">Iniciar sesión</a>
+    </div>
+    <div class="err-links">
+      <a href="/acerca">Acerca de</a>
+      <a href="/contacto">Contacto</a>
+      <a href="/privacidad">Privacidad</a>
+      <a href="/terminos">Términos</a>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="pie-inner">
+    <div class="pie-marca">
+      <a class="logo" href="/" aria-label="PROTACTICS — inicio">
+        <span class="logo-mark"><img src="/assets/logo-mark.png" width="52" height="52" alt="" aria-hidden="true"></span>
+        <span class="logo-txt"><span class="marca">PROTACTICS</span></span>
+      </a>
+      <p>
+        Monitoreo operacional de los escáneres portuarios de Colombia: inspecciones,
+        horas pico y disponibilidad de cada equipo, en un solo tablero.
+      </p>
+    </div>
+    <div class="pie-col">
+      <h5>Plataforma</h5>
+      <ul>
+        <li><a href="/">Inicio</a></li>
+        <li><a href="/acerca">Acerca de</a></li>
+        <li><a href="/login">Iniciar sesión</a></li>
+      </ul>
+    </div>
+    <div class="pie-col">
+      <h5>Soporte</h5>
+      <ul>
+        <li><a href="/contacto">Contacto</a></li>
+        <li><a href="/contacto#acceso">Solicitar acceso</a></li>
+        <li><a href="/contacto#fallas">Reportar una falla</a></li>
+      </ul>
+    </div>
+    <div class="pie-col">
+      <h5>Legal</h5>
+      <ul>
+        <li><a href="/privacidad">Privacidad</a></li>
+        <li><a href="/terminos">Términos de uso</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="pie-base">
+    <span>© 2026 PROTACTICS · Sistema escáner portuario</span>
+    <span class="estado"><span class="punto"></span>Sistema operativo</span>
+    <span>Colombia</span>
+  </div>
+</footer>
+
+<script>
+// Muestra la ruta pedida. Se inserta como texto, nunca como HTML: la URL
+// viene del visitante y no debe poder inyectar marcado.
+(function(){
+  const caja = document.getElementById('ruta');
+  const ruta = location.pathname + location.search;
+  if (ruta && ruta !== '/') caja.textContent = ruta;
+  else caja.style.display = 'none';
+})();
+</script>
+</body>
+</html>
