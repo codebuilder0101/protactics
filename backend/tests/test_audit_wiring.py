@@ -42,8 +42,9 @@ def test_carga_auditada(feeder):
     assert ups and ups[0].entidad_id == "0/2026/4"
 
 
-def test_edicion_disponibilidad_auditada(feeder):
-    r = feeder.put("/disponibilidad/0/2026/4", json={"valor": 97.5})
+def test_edicion_disponibilidad_auditada(client, admin):
+    # La disponibilidad la fija SOLO el administrador (ver test_permissions).
+    r = client.put("/disponibilidad/0/2026/4", json={"valor": 97.5})
     assert r.status_code == 200, r.text
     evs = _audits("edit_disponibilidad")
     assert evs and evs[0].detalle["despues"] == 97.5

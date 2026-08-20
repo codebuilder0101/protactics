@@ -595,6 +595,11 @@ const API_URL = window.location.hostname === 'localhost'
 
 const USE_API = true; // ← Conectado al backend FastAPI + PostgreSQL
 
+// Alertas y estado de SLA: ocultos por decisión del cliente. El motor sigue
+// funcionando en el servidor; aquí solo se deja de mostrar. Poner en true
+// devuelve el panel del tablero y las insignias de los pines del mapa.
+const MOSTRAR_ALERTAS = false;
+
 // Si la sesión caduca a mitad de uso, el backend responde 401 → al login.
 function handleAuth(r){
   if (r.status === 401) { window.location.href = '/login'; throw new Error('No autenticado'); }
@@ -654,7 +659,8 @@ async function apiUploadBulk(files) {
 let CURRENT_USER = null;
 let ROLE = null;
 let ALLOWED_IDS = null;        // null = todos los puertos; [] = ninguno (pendiente)
-let CAN_EDIT = false;          // puede subir XLS / editar disponibilidad
+let CAN_EDIT = false;          // puede subir XLS (admin y alimentador)
+let CAN_EDIT_AVAIL = false;    // puede fijar la disponibilidad (SOLO admin)
 
 const ROLE_LABELS = {
   admin: 'Administrador',
@@ -671,6 +677,7 @@ async function loadCurrentUser(){
     CURRENT_USER = u;
     ROLE = u.role;
     CAN_EDIT = (ROLE === 'admin' || ROLE === 'alimentador');
+    CAN_EDIT_AVAIL = (ROLE === 'admin');
 
     const name = u.nombre || u.email.split('@')[0];
     document.getElementById('userName').textContent = name;
@@ -907,11 +914,14 @@ PORTS.forEach(p => { monthSLA[p.id] = {}; YEARS.forEach(y => monthSLA[p.id][y] =
 // Resumen de alertas abiertas por puerto: {portId: {critical,warning,info}}
 let ALERTS_SUMMARY = {};
 async function loadAlertsResumen(){
-  if (!USE_API) return;
+  if (!USE_API || !MOSTRAR_ALERTAS) return;
   try { ALERTS_SUMMARY = await apiGet('/alertas/resumen') || {}; }
   catch(e){ ALERTS_SUMMARY = {}; }
 }
 function alertCount(portId){
+  // Con las alertas ocultas se responde cero para todos los puertos: el mapa ya
+  // sabe pintar ese caso sin insignia y con el tooltip normal del puerto.
+  if (!MOSTRAR_ALERTAS) return {total:0, critical:0, warning:0, info:0};
   const s = ALERTS_SUMMARY[portId] || ALERTS_SUMMARY[String(portId)];
   if (!s) return {total:0, critical:0, warning:0, info:0};
   const critical = s.critical||0, warning = s.warning||0, info = s.info||0;
@@ -938,6 +948,10 @@ function updateAllPinBadges(){
 }
 
 function saveAvail(portId, year, mi, val) {
+  // Solo el administrador fija la disponibilidad. El input ni siquiera se pinta
+  // para los demás perfiles; esta guarda evita escrituras por consola y deja el
+  // backend como única autoridad (responde 403 igualmente).
+  if (!CAN_EDIT_AVAIL) return;
   const n = parseFloat(val);
   portAvail[portId][year][mi] = (!isNaN(n) && n >= 0 && n <= 100) ? n : null;
   const v   = portAvail[portId][year][mi];
@@ -1265,7 +1279,7 @@ function renderMonthsGrid(portId, year) {
                 style="width:${pct}%;background:${col}"></div>
             </div>
             <div class="disp-value-box" onclick="event.stopPropagation()">
-              ${CAN_EDIT ? `
+              ${CAN_EDIT_AVAIL ? `
               <input class="disp-input"
                 id="disp-inp-${portId}-${year}-${mi}"
                 type="text"
@@ -1282,7 +1296,7 @@ function renderMonthsGrid(portId, year) {
               <span class="disp-pct" style="color:${avail!==null?col:'var(--dim)'}">%</span>
             </div>
           </div>
-          ${CAN_EDIT ? `<div class="disp-hint">✏ Escribe el valor aquí arriba</div>` : ''}
+          ${CAN_EDIT_AVAIL ? `<div class="disp-hint">✏ Escribe el valor aquí arriba</div>` : ''}
         </div>` : ''}
       `;
       if (isPast || data) {
@@ -1768,7 +1782,7 @@ async function renderSLAandAlerts(portId, year, monthIdx){
   const panel = document.getElementById('slaPanel');
   const stateEl = document.getElementById('slaState');
   const listEl  = document.getElementById('alertList');
-  if (!USE_API){ panel.style.display = 'none'; return; }
+  if (!USE_API || !MOSTRAR_ALERTAS){ panel.style.display = 'none'; return; }
   panel.style.display = '';
   stateEl.innerHTML = '<span class="dim">Cargando…</span>';
   listEl.innerHTML = '';

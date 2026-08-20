@@ -5,7 +5,6 @@ FastAPI + SQLAlchemy + PostgreSQL (SQLite para desarrollo local)
 import io
 import os
 import re
-import calendar
 from datetime import datetime, date
 from typing import Optional
 
@@ -284,23 +283,6 @@ def rows_to_dicts(rows: list) -> list[dict]:
     return result
 
 
-def compute_availability(daily: dict, year: int, mes: int) -> float:
-    """Estima la disponibilidad del servicio a partir de los días operativos.
-
-    Disponibilidad = (días con actividad de escaneo / días del mes) × 100.
-    Para el mes en curso se usan los días transcurridos hasta hoy.
-    Devuelve un porcentaje realista entre 0 y 100 (1 decimal).
-    """
-    days_active = len([d for d, t in daily.items() if t])
-    if days_active == 0:
-        return 0.0
-    days_in_month = calendar.monthrange(year, mes)[1]
-    today = datetime.utcnow()
-    eff_days = today.day if (year == today.year and mes == today.month) else days_in_month
-    eff_days = max(eff_days, days_active)  # nunca dividir por menos que los días activos
-    return round(min(100.0, days_active / eff_days * 100.0), 1)
-
-
 def _by_day(data: dict) -> dict:
     """Obtiene el desglose por día del parser. Si por algún motivo no viene,
     lo reconstruye desde los agregados (queda todo bajo el día reportado)."""
@@ -365,15 +347,9 @@ def save_parsed_data(db: Session, puerto_id: int, year: int, mes: int,
             total_escaneos=month_total
         ))
 
-    # Disponibilidad estimada sobre el mes ACUMULADO. Solo si no hay valor manual.
-    disp = db.query(Disponibilidad).filter_by(
-        puerto_id=puerto_id, year=year, mes=mes).first()
-    auto = compute_availability(month_daily, year, mes)
-    if disp is None:
-        db.add(Disponibilidad(puerto_id=puerto_id, year=year, mes=mes, valor=auto))
-    elif disp.valor is None:
-        disp.valor = auto
-
+    # La DISPONIBILIDAD no se deriva de los datos: es un dato de gestión que el
+    # administrador informa a mano mes a mes. Cargar un archivo NO la crea ni la
+    # estima; un mes sin cifra escrita se muestra vacío hasta que alguien la ponga.
     db.commit()
 
 
@@ -846,8 +822,11 @@ def set_disponibilidad(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    if not can_upload_port(user, puerto_id):
-        raise HTTPException(403, "No tienes permiso para editar este puerto")
+    # La disponibilidad es un dato de GESTIÓN que el cliente informa a mano: solo
+    # el administrador puede fijarla. Los alimentadores cargan XLS pero NO tocan
+    # esta cifra (antes podían, sobre su propio puerto).
+    if user.role != ROLE_ADMIN:
+        raise HTTPException(403, "Solo un administrador puede editar la disponibilidad")
     if body.valor is not None and not (0 <= body.valor <= 100):
         raise HTTPException(400, "Valor debe estar entre 0 y 100")
 
