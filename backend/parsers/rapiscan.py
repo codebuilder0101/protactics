@@ -47,7 +47,10 @@ def _find_header(rows) -> int:
 
 def parse(rows: list, port_name: str, month_name: str,
           filter_year: int = None, filter_month: int = None,
-          anchor_day: int = None) -> dict:
+          anchor_day: int = None, excluidas=None) -> dict:
+    # `excluidas`: índices de filas (de ESTA lista) cuya miniatura no es un
+    # escaneo de camión. No cuentan como escaneo. Vacío = comportamiento previo.
+    excluidas = excluidas or ()
 
     # Localizar la fila de encabezado del detalle (fecha + columnas de detalle).
     header_idx = _find_header(rows)
@@ -62,7 +65,9 @@ def parse(rows: list, port_name: str, month_name: str,
         user_col = next((i for i, v in enumerate(header)
                          if "User Name" in str(v) or "Usuario" in str(v)), None)
         if date_col is not None:
-            for row in rows[header_idx + 1:]:
+            for idx, row in enumerate(rows[header_idx + 1:], start=header_idx + 1):
+                if idx in excluidas:
+                    continue
                 vals = _vals(row)
                 if len(vals) <= date_col:
                     continue
@@ -86,6 +91,8 @@ def parse(rows: list, port_name: str, month_name: str,
     if not buckets.by_day:
         summary_end = header_idx if header_idx != -1 else len(rows)
         for i in range(summary_end):
+            if i in excluidas:
+                continue
             vals = _vals(rows[i])
             if len(vals) < 2:
                 continue

@@ -8,12 +8,17 @@ from parsers.dates import to_ymdh, DayBuckets
 
 def parse(rows: list, port_name: str, month_name: str,
           filter_year: int = None, filter_month: int = None,
-          anchor_day: int = None) -> dict:
-    scans = [r for r in rows
-             if str(r.get("Estado de flujo de trabajo", "")).strip() in ("100", "100.0")]
+          anchor_day: int = None, excluidas=None) -> dict:
+    # `excluidas`: índices de filas (de ESTA lista) cuya miniatura no es un
+    # escaneo de camión. No cuentan como escaneo. Vacío = comportamiento previo.
+    excluidas = excluidas or ()
 
     buckets = DayBuckets()
-    for r in scans:
+    for i, r in enumerate(rows):
+        if i in excluidas:
+            continue
+        if str(r.get("Estado de flujo de trabajo", "")).strip() not in ("100", "100.0"):
+            continue
         y, mo, day, hour = to_ymdh(r.get("Fecha de creación"))
         if anchor_day is not None:      # día fiable desde el nombre del archivo
             day = anchor_day

@@ -34,6 +34,7 @@ from auth import (router as auth_router, get_current_user, require_admin,
 import mantenimiento as mant
 import sla as sla_engine
 import anomalies
+import imagenes
 from reportes import datos as rep_datos, pdf as rep_pdf, excel as rep_excel
 
 # ── App ────────────────────────────────────────────────────
@@ -62,6 +63,16 @@ REGISTRATION_ENABLED = os.getenv("REGISTRATION_ENABLED", "false").lower() in ("1
 # Carga masiva: tope de archivos por lote y tamaño máximo por archivo.
 MAX_BULK_FILES = int(os.getenv("MAX_BULK_FILES", "100"))
 MAX_FILE_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))  # 15 MB
+
+# Validación de miniaturas (ver imagenes.py). Un registro cuya imagen NO es un
+# escaneo de camión no es un escaneo válido y no debe contarse.
+#   off       no se evalúan las imágenes (comportamiento anterior).
+#   sombra    se evalúan y se informan, pero TODAS las filas siguen contando.
+#   estricto  las filas no-camión se EXCLUYEN de los totales.
+# Arranca en «sombra» a propósito: así el primer recuento distinto se ve en la
+# respuesta de la carga antes de que altere una cifra oficial. Para activar la
+# exclusión real: VALIDACION_IMAGENES=estricto.
+VALIDACION_IMAGENES = os.getenv("VALIDACION_IMAGENES", "sombra").strip().lower()
 
 
 @app.on_event("startup")
@@ -233,21 +244,30 @@ def _sheet_score(rows: list) -> int:
 
 
 def read_excel_rows(content: bytes, filename: str) -> list:
-    """Lee XLS o XLSX y retorna lista de listas (header:1).
+    """Filas de la hoja de detalle del libro (ver read_excel_sheet)."""
+    return read_excel_sheet(content, filename)[0]
+
+
+def read_excel_sheet(content: bytes, filename: str):
+    """(filas, índice_de_hoja) — lee XLS o XLSX y retorna lista de listas.
 
     Si el libro tiene varias hojas, elige la hoja de DETALLE (escaneos fila a
     fila) en lugar de una hoja de resumen, comparando marcadores de columnas
     conocidas. Para libros de una sola hoja el comportamiento no cambia.
+
+    Devuelve además QUÉ hoja se eligió: la validación de miniaturas tiene que
+    leer el dibujo de ESA misma hoja, o las imágenes se asignarían a filas de
+    otra.
     """
     if filename.lower().endswith(".xls"):
         book = xlrd.open_workbook(file_contents=content)
-        best, best_score = book.sheet_by_index(0), -1
-        for sh in book.sheets():
+        best, best_idx, best_score = book.sheet_by_index(0), 0, -1
+        for pos, sh in enumerate(book.sheets()):
             head = [sh.row_values(i) for i in range(min(sh.nrows, 26))]
             score = _sheet_score(head)
             if score > best_score:
-                best, best_score = sh, score
-        return [best.row_values(i) for i in range(best.nrows)]
+                best, best_idx, best_score = sh, pos, score
+        return [best.row_values(i) for i in range(best.nrows)], best_idx
     else:
         # 1ª pasada: puntuar las cabeceras de cada hoja (barata, ~26 filas).
         wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
@@ -265,9 +285,10 @@ def read_excel_rows(content: bytes, filename: str) -> list:
         # 2ª pasada: leer completa la hoja elegida.
         wb2 = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         ws = wb2[best_title] if best_title is not None else wb2.active
+        idx = wb2.sheetnames.index(ws.title)
         rows = [list(row) for row in ws.iter_rows(values_only=True)]
         wb2.close()
-        return rows
+        return rows, idx
 
 
 def rows_to_dicts(rows: list) -> list[dict]:
@@ -428,12 +449,17 @@ def _guardar_detalle_safe(db: Session, puerto_id: int, year: int, mes: int,
 
 
 def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
-                   raw_rows: list, filename: str) -> dict:
+                   raw_rows: list, filename: str,
+                   contenido: bytes = None, hoja: int = 0) -> dict:
     """Detecta, parsea y guarda un archivo ya leído para (puerto, year, mes).
 
     Compartido por la carga individual y la carga masiva. NO valida permisos
     (eso es responsabilidad de quien llama). Lanza HTTPException 400 si el archivo
     no aporta escaneos para el período. Devuelve los totales del archivo y del mes.
+
+    `contenido` es el archivo original: hace falta para leer las miniaturas
+    incrustadas (las filas ya parseadas no las llevan). Sin él, la validación de
+    imágenes se omite y el recuento es el de siempre.
     """
     fmt = detect_format(raw_rows)
     rows = rows_to_dicts(raw_rows) if fmt in ("standard", "tcbuen") else raw_rows
@@ -452,10 +478,34 @@ def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
         if c_m is not None and (c_y, c_m) != (fname_period[0], fname_period[1]):
             anchor_day = fname_period[2]
 
+    # ── Validación de miniaturas ─────────────────────────────
+    # Una fila cuya imagen no es un escaneo de camión no es un escaneo válido.
+    val = {"excluidas": set(), "resumen": imagenes.resumen_vacio()}
+    if VALIDACION_IMAGENES in ("sombra", "estricto") and contenido:
+        val = imagenes.evaluar(contenido, filename, hoja)
+
+    # Los índices que devuelve `imagenes` son filas 0-based de la HOJA, o sea
+    # posiciones de raw_rows. El parser de standard/tcbuen recibe la lista ya
+    # convertida a dicts, donde la posición j corresponde a raw_rows[j+1] (la
+    # fila 0 es el encabezado); rapiscan recibe raw_rows tal cual.
+    if fmt in ("standard", "tcbuen"):
+        excluidas = {i - 1 for i in val["excluidas"] if i >= 1}
+    else:
+        excluidas = set(val["excluidas"])
+    aplicar = VALIDACION_IMAGENES == "estricto"
+
     data = parse_file(rows, puerto.nombre_corto, month_name, year, mes,
-                      anchor_day=anchor_day)
+                      anchor_day=anchor_day,
+                      excluidas=excluidas if aplicar else None)
 
     if data["total_scans"] == 0:
+        if aplicar and excluidas:
+            raise HTTPException(
+                400,
+                f"Ninguna de las {len(excluidas)} filas de este archivo tiene una "
+                f"imagen de escaneo de camión válida, así que no aporta escaneos "
+                f"de {MONTHS[mes - 1]} {year}."
+            )
         raise HTTPException(
             400,
             f"No se encontraron escaneos de {MONTHS[mes - 1]} {year} en este "
@@ -487,6 +537,16 @@ def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
         "promedio_diario": data["avg_daily"],
         "total_mes": month_total,                # acumulado del mes
         "dias_mes": month_days,
+        # Miniaturas: qué se evaluó y qué se dejó fuera del recuento.
+        # En modo «sombra», `descartadas` es 0 y `no_camion` dice cuántas se
+        # habrían descartado — así se compara el efecto antes de activarlo.
+        "imagenes": {
+            "modo": VALIDACION_IMAGENES,
+            "con_imagen": val["resumen"]["con_imagen"],
+            "no_camion": val["resumen"][imagenes.NO_CAMION],
+            "indeterminadas": val["resumen"][imagenes.INDETERMINADO],
+            "descartadas": len(excluidas) if aplicar else 0,
+        },
     }
 
 
@@ -582,7 +642,7 @@ async def upload_file(
         raise HTTPException(404, "Puerto no encontrado")
 
     content = await file.read()
-    raw_rows = read_excel_rows(content, file.filename)
+    raw_rows, hoja = read_excel_sheet(content, file.filename)
 
     # Validación de PUERTO: en una carga DIRIGIDA, el archivo debe pertenecer al
     # puerto elegido. Si su contenido/nombre apunta CLARAMENTE a otro puerto, se
@@ -618,14 +678,16 @@ async def upload_file(
             f"{MONTHS[mes - 1]} {year}. Suéltalo sobre la tarjeta del mes correcto."
         )
 
-    result = process_upload(db, puerto, year, mes, raw_rows, file.filename)
+    result = process_upload(db, puerto, year, mes, raw_rows, file.filename,
+                            contenido=content, hoja=hoja)
 
     record_audit(accion="upload", entidad="escaneos",
                  entidad_id=f"{puerto_id}/{year}/{mes}", puerto_id=puerto_id,
                  actor=user, request=request,
                  detalle={"filename": file.filename, "formato": result["formato"],
                           "total_archivo": result["total_escaneos"],
-                          "total_mes": result["total_mes"]})
+                          "total_mes": result["total_mes"],
+                          "imagenes": result["imagenes"]})
     return result
 
 
@@ -663,7 +725,7 @@ async def upload_bulk(
                 results.append(item)
                 continue
 
-            raw_rows = read_excel_rows(content, f.filename)
+            raw_rows, hoja = read_excel_sheet(content, f.filename)
             decision = route_file(raw_rows, f.filename, puertos)
             item.update(puerto_id=decision["puerto_id"], year=decision["year"],
                         mes=decision["mes"])
@@ -685,9 +747,11 @@ async def upload_bulk(
                 continue
 
             puerto = by_id.get(pid)
-            res = process_upload(db, puerto, yr, mo, raw_rows, f.filename)
+            res = process_upload(db, puerto, yr, mo, raw_rows, f.filename,
+                                 contenido=content, hoja=hoja)
             item.update(status="ok", total_escaneos=res["total_mes"],
-                        message="Cargado", routing_source=decision["period_source"])
+                        message="Cargado", routing_source=decision["period_source"],
+                        imagenes=res["imagenes"])
             if decision.get("multi_month"):
                 item["multi_month"] = decision["multi_month"]
             summary["ok"] += 1
@@ -698,7 +762,8 @@ async def upload_bulk(
                          actor=user, request=request,
                          detalle={"filename": f.filename, "formato": res["formato"],
                                   "total_mes": res["total_mes"],
-                                  "period_source": decision["period_source"]})
+                                  "period_source": decision["period_source"],
+                                  "imagenes": res["imagenes"]})
         except HTTPException as e:
             db.rollback()        # aísla el fallo a este archivo
             item["message"] = e.detail

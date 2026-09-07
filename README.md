@@ -129,6 +129,31 @@ Documentación interactiva: `http://localhost:8000/docs`
 |----------|-------------|---------|
 | `DATABASE_URL` | URL de PostgreSQL | `sqlite:///./protactics.db` |
 | `PORT` | Puerto del servidor | `8000` |
+| `VALIDACION_IMAGENES` | Validación de miniaturas: `off` \| `sombra` \| `estricto` | `sombra` |
+
+### Validación de miniaturas
+
+Un registro cuya miniatura **no es un escaneo de camión** (una foto, una banda
+oscura, una captura parcial) no es un escaneo válido y no debe contarse.
+
+| Modo | Qué hace |
+|------|----------|
+| `off` | No evalúa las imágenes (comportamiento anterior). |
+| `sombra` | Evalúa e informa en la respuesta de la carga, pero **todas las filas siguen contando**. |
+| `estricto` | Las filas no-camión se **excluyen** de los totales. |
+
+Arranca en `sombra` a propósito: así se comparan los recuentos antes de que la
+validación altere una cifra oficial. Cuando cuadren, `VALIDACION_IMAGENES=estricto`.
+
+La respuesta de `/upload/...` incluye el bloque `imagenes`:
+
+```json
+"imagenes": {"modo": "sombra", "con_imagen": 288, "no_camion": 8,
+             "indeterminadas": 0, "descartadas": 0}
+```
+
+Una imagen que no se puede leer se marca `indeterminada` y **cuenta como válida**:
+excluir por incertidumbre subestimaría la operación del puerto.
 
 ---
 

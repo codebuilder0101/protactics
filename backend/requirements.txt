@@ -10,3 +10,5 @@ pydantic==2.7.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 fpdf2==2.8.2
+Pillow==11.3.0         # decodifica las miniaturas de escaneo (imagenes.py)
+olefile==0.47          # abre el contenedor OLE2 de los .xls para leerlas

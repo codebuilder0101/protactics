@@ -23,11 +23,17 @@ def _clean_operator(val):
 
 def parse(rows: list, port_name: str, month_name: str,
           filter_year: int = None, filter_month: int = None,
-          anchor_day: int = None) -> dict:
-    scans = [r for r in rows if not _is_empty(r.get("Fecha de creación"))]
+          anchor_day: int = None, excluidas=None) -> dict:
+    # `excluidas`: índices de filas (de ESTA lista) cuya miniatura no es un
+    # escaneo de camión. No cuentan como escaneo. Vacío = comportamiento previo.
+    excluidas = excluidas or ()
 
     buckets = DayBuckets()
-    for r in scans:
+    for i, r in enumerate(rows):
+        if i in excluidas:
+            continue
+        if _is_empty(r.get("Fecha de creación")):
+            continue
         y, mo, day, hour = to_ymdh(r.get("Fecha de creación"))
         # `anchor_day` fija el día del reporte desde el nombre del archivo cuando
         # las fechas del contenido están volteadas/US en el origen (solo la hora
