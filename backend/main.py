@@ -248,6 +248,45 @@ def read_excel_rows(content: bytes, filename: str) -> list:
     return read_excel_sheet(content, filename)[0]
 
 
+def _tamano_declarado_ole(content: bytes) -> int | None:
+    """Bytes que un contenedor OLE2 (.xls) dice ocupar, o None si no es OLE2.
+
+    La cabecera declara cuántos sectores de FAT hay; con eso se sabe el tamaño
+    que el libro debería tener. Si el archivo real es mucho menor, llegó cortado.
+    """
+    if len(content) < 64 or content[:8] != b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        return None
+    try:
+        ss = 1 << int.from_bytes(content[0x1E:0x20], "little")
+        nfat = int.from_bytes(content[0x2C:0x30], "little")
+        return (nfat * (ss // 4) + 1) * ss
+    except Exception:
+        return None
+
+
+def _error_lectura(filename: str, content: bytes, exc: Exception) -> str:
+    """Mensaje claro para un libro que no se puede abrir.
+
+    Sin esto, un .xls cortado a medias sale como IndexError de xlrd y el usuario
+    recibe un 500 sin pista de qué hacer. El caso más común con diferencia es la
+    transferencia incompleta, así que se detecta y se nombra explícitamente.
+    """
+    kb = len(content) / 1024
+    declarado = _tamano_declarado_ole(content)
+    if declarado and len(content) < declarado * 0.9:
+        return (
+            f"El archivo «{filename}» está incompleto: se recibieron "
+            f"{kb:,.0f} KB de los ~{declarado / 1048576:.1f} MB que declara "
+            f"contener. Normalmente significa que la transferencia se cortó. "
+            f"Vuelve a subirlo completo."
+        )
+    return (
+        f"No se pudo leer «{filename}»: el archivo está dañado o no es un "
+        f"Excel válido ({type(exc).__name__}). Vuelve a exportarlo desde el "
+        f"sistema del escáner y súbelo de nuevo."
+    )
+
+
 def read_excel_sheet(content: bytes, filename: str):
     """(filas, índice_de_hoja) — lee XLS o XLSX y retorna lista de listas.
 
@@ -259,6 +298,16 @@ def read_excel_sheet(content: bytes, filename: str):
     leer el dibujo de ESA misma hoja, o las imágenes se asignarían a filas de
     otra.
     """
+    try:
+        return _leer_hoja(content, filename)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, _error_lectura(filename, content, e)) from e
+
+
+def _leer_hoja(content: bytes, filename: str):
+    """Lectura real del libro. read_excel_sheet la envuelve para dar un 400."""
     if filename.lower().endswith(".xls"):
         book = xlrd.open_workbook(file_contents=content)
         best, best_idx, best_score = book.sheet_by_index(0), 0, -1
@@ -448,6 +497,52 @@ def _guardar_detalle_safe(db: Session, puerto_id: int, year: int, mes: int,
                    puerto_id, year, mes, e)
 
 
+# Tope de filas detalladas en la respuesta: un archivo con miles de miniaturas
+# malas no debe producir un JSON gigante. El recuento completo sigue en
+# `no_camion`; esto es la lista para ir a revisarlas a mano.
+MAX_FILAS_DETALLE = 200
+
+
+def _contexto_fila(raw_rows: list, idx: int, n: int = 3) -> list:
+    """Primeras celdas no vacías de la fila, para reconocer el registro.
+
+    Se toma del archivo tal cual (sin depender del formato ni de qué columnas
+    traiga cada puerto), truncando cada celda: sirve para identificar la fila
+    en el Excel, no para reprocesarla.
+    """
+    if not (0 <= idx < len(raw_rows)):
+        return []
+    fila = raw_rows[idx]
+    if isinstance(fila, dict):
+        fila = list(fila.values())
+    out = []
+    for c in fila:
+        if c is None or str(c).strip() == "":
+            continue
+        out.append(str(c)[:40])
+        if len(out) >= n:
+            break
+    return out
+
+
+def _detalle_no_camion(val: dict, raw_rows: list) -> list:
+    """Filas con veredicto no_camion, con su motivo y su número de fila Excel.
+
+    Los índices de `imagenes` son filas 0-based de la hoja; en Excel la primera
+    fila es la 1 (y suele ser el encabezado), de ahí el +1.
+    """
+    malas = sorted(f for f, i in val.get("filas", {}).items()
+                   if i["veredicto"] == imagenes.NO_CAMION)
+    return [{
+        "fila_excel": f + 1,
+        "motivo": val["filas"][f]["motivo"],
+        "ancho": val["filas"][f]["ancho"],
+        "alto": val["filas"][f]["alto"],
+        "brillo_superior": val["filas"][f]["top"],
+        "contexto": _contexto_fila(raw_rows, f),
+    } for f in malas[:MAX_FILAS_DETALLE]]
+
+
 def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
                    raw_rows: list, filename: str,
                    contenido: bytes = None, hoja: int = 0) -> dict:
@@ -546,6 +641,10 @@ def process_upload(db: Session, puerto: Puerto, year: int, mes: int,
             "no_camion": val["resumen"][imagenes.NO_CAMION],
             "indeterminadas": val["resumen"][imagenes.INDETERMINADO],
             "descartadas": len(excluidas) if aplicar else 0,
+            # QUÉ filas fallaron, no solo cuántas. Sin esto el operador ve
+            # «no_camion: 8» y no tiene forma de ir a buscar esos 8 registros
+            # en el Excel para revisarlos.
+            "filas_no_camion": _detalle_no_camion(val, raw_rows),
         },
     }
 
